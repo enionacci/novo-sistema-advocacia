@@ -18,8 +18,11 @@ RUN npm install
 # Copiar código da aplicação
 COPY . .
 
+# Copiar variáveis de ambiente de produção
+# O React (CRA) incorpora REACT_APP_* no bundle em tempo de build
+COPY .env.production .env
+
 # Build da aplicação para produção
-# A URL da API será configurada em tempo de execução via ENV
 RUN npm run build
 
 # Stage 2: Servidor Nginx para produção

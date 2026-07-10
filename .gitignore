@@ -23,6 +23,17 @@ db.sqlite3
 # Arquivos de Mídia enviados pelos usuários
 /backend/media/
 
-# Arquivos de segredos (vamos criar um em breve)
+# Arquivos de segredos (NUNCA versionar)
 .env
-*.env
+.env.local
+.env.development
+.env.development.local
+.env.test.local
+
+# Arquivos de ambiente de produção (DEVEM ser versionados para o Docker build)
+# .env.production - EXCEÇÃO: necessário para o build da imagem Docker
+!.env.production
+
+# Arquivos de login/credenciais de teste (NUNCA versionar)
+login.json
+login2.json
