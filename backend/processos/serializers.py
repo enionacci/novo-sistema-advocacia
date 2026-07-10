@@ -62,6 +62,7 @@ class MovimentacaoSerializer(serializers.ModelSerializer):
     """Serializer para movimentações do processo"""
     tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
     cadastrado_por_detalhes = UserSerializer(source='cadastrado_por', read_only=True)
+    analisada_por_detalhes = UserSerializer(source='analisada_por', read_only=True)
     
     class Meta:
         model = Movimentacao
@@ -70,7 +71,8 @@ class MovimentacaoSerializer(serializers.ModelSerializer):
             'descricao', 'documento', 'numero_protocolo',
             'gera_prazo', 'prazo_dias', 'data_limite',
             'data_cadastro', 'cadastrado_por', 'cadastrado_por_detalhes',
-            'importante', 'lido'
+            'importante', 'lido',
+            'analisada_ia', 'data_analise_ia', 'resultado_analise_ia', 'analisada_por', 'analisada_por_detalhes'
         ]
         read_only_fields = ['id', 'data_cadastro']
 

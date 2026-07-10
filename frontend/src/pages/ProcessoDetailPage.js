@@ -77,6 +77,7 @@ const ProcessoDetailPage = () => {
   const [dataIntimacao, setDataIntimacao] = useState('');
   const [analisandoIA, setAnalisandoIA] = useState(false);
   const [resultadoIA, setResultadoIA] = useState(null);
+  const [movimentacaoEmAnaliseId, setMovimentacaoEmAnaliseId] = useState(null);
   
   // Estados para adicionar/editar Prazo
   const [prazoDialogOpen, setPrazoDialogOpen] = useState(false);
@@ -200,7 +201,16 @@ const ProcessoDetailPage = () => {
     setDeleteDialogOpen(false);
   };
 
-  const handleAnalisarComIA = async () => {
+  const handleAnalisarMovimentacao = async (movimentacao) => {
+    setTextoIntimacao(movimentacao.descricao);
+    setDataIntimacao(movimentacao.data_movimentacao.split('T')[0]);
+    setIaDialogOpen(true);
+    
+    // Armazena o ID da movimentação para enviar na análise
+    setMovimentacaoEmAnaliseId(movimentacao.id);
+  };
+
+  const handleAnalisarComIA = async (movimentacaoId = null) => {
     if (!textoIntimacao.trim()) {
       alert('Digite o texto da intimação');
       return;
@@ -210,15 +220,36 @@ const ProcessoDetailPage = () => {
       setAnalisandoIA(true);
       setResultadoIA(null);
 
-      const response = await axiosInstance.post('/api/processos/processos/analisar_intimacao_ia/', {
+      // Usa o ID da movimentação armazenado temporariamente ou o passado por parâmetro
+      const movId = movimentacaoId || movimentacaoEmAnaliseId;
+
+      const requestData = {
         texto: textoIntimacao,
         data_intimacao: dataIntimacao || new Date().toISOString().split('T')[0]
-      });
+      };
+      
+      // Se for análise de uma movimentação específica, envia o ID
+      if (movId) {
+        requestData.movimentacao_id = movId;
+      }
+
+      const response = await axiosInstance.post('/api/processos/processos/analisar_intimacao_ia/', requestData);
 
       setResultadoIA(response.data);
       
       // Exibe mensagem de sucesso
-      alert(`✅ Análise concluída!\n\n📋 ${response.data.total_prazos} prazos encontrados\n🎤 ${response.data.total_audiencias} audiências encontradas`);
+      const mensagem = movId
+        ? `✅ Análise concluída e salva na movimentação!\n\n📋 ${response.data.total_prazos} prazos encontrados\n🎤 ${response.data.total_audiencias} audiências encontradas`
+        : `✅ Análise concluída!\n\n📋 ${response.data.total_prazos} prazos encontrados\n🎤 ${response.data.total_audiencias} audiências encontradas`;
+      
+      alert(mensagem);
+      
+      // Limpa o ID temporário
+      if (movId) {
+        setMovimentacaoEmAnaliseId(null);
+        // Recarrega para atualizar o badge
+        await fetchProcesso();
+      }
 
     } catch (err) {
       console.error('Erro ao analisar com IA:', err);
@@ -256,8 +287,8 @@ const ProcessoDetailPage = () => {
       setDataIntimacao('');
       setResultadoIA(null);
       
-      // Recarrega processo
-      fetchProcesso();
+      // Recarrega processo para atualizar badge de "analisada_ia"
+      await fetchProcesso();
 
     } catch (err) {
       console.error('Erro ao salvar resultados:', err);
@@ -961,14 +992,24 @@ const ProcessoDetailPage = () => {
               <Typography variant="h6">
                 Movimentações Processuais
               </Typography>
-              <Button
-                variant="outlined"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => handleAbrirDialogMovimentacao()}
-              >
-                Adicionar Movimentação
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => handleAbrirDialogMovimentacao()}
+                >
+                  Adicionar Movimentação
+                </Button>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  startIcon={<PsychologyIcon />}
+                  onClick={() => setIaDialogOpen(true)}
+                >
+                  Analisar com IA
+                </Button>
+              </Box>
             </Box>
             <Divider sx={{ mb: 3 }} />
             
@@ -992,6 +1033,14 @@ const ProcessoDetailPage = () => {
                           <Box sx={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 0.5 }}>
                             <IconButton 
                               size="small" 
+                              color="secondary" 
+                              onClick={() => handleAnalisarMovimentacao(mov)}
+                              title={mov.analisada_ia ? "Reanalisar com IA" : "Analisar com IA"}
+                            >
+                              <PsychologyIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton 
+                              size="small" 
                               color="success" 
                               onClick={() => handleCopiarTexto(mov.descricao)}
                               title="Copiar texto"
@@ -1005,7 +1054,17 @@ const ProcessoDetailPage = () => {
                               <DeleteIcon fontSize="small" />
                             </IconButton>
                           </Box>
-                          <Chip label={mov.tipo_display} size="small" sx={{ mb: 1 }} />
+                          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                            <Chip label={mov.tipo_display} size="small" />
+                            {mov.analisada_ia && (
+                              <Chip 
+                                label="✓ Analisada por IA" 
+                                size="small" 
+                                color="secondary"
+                                title={`Analisada em ${formatDateTime(mov.data_analise_ia)} por ${mov.analisada_por_detalhes?.first_name || 'Usuário'}`}
+                              />
+                            )}
+                          </Box>
                           <Typography 
                             variant="body1"
                             sx={{
@@ -1054,24 +1113,14 @@ const ProcessoDetailPage = () => {
                 <ScheduleIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
                 Prazos Processuais
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  onClick={() => handleAbrirDialogPrazo()}
-                >
-                  Adicionar Prazo
-                </Button>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  startIcon={<PsychologyIcon />}
-                  onClick={() => setIaDialogOpen(true)}
-                >
-                  Analisar com IA
-                </Button>
-              </Box>
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => handleAbrirDialogPrazo()}
+              >
+                Adicionar Prazo
+              </Button>
             </Box>
             <Divider sx={{ mb: 3 }} />
             
@@ -1660,6 +1709,7 @@ const ProcessoDetailPage = () => {
               setTextoIntimacao('');
               setDataIntimacao('');
               setResultadoIA(null);
+              setMovimentacaoEmAnaliseId(null);
             }} 
             disabled={analisandoIA}
           >
@@ -1667,7 +1717,7 @@ const ProcessoDetailPage = () => {
           </Button>
           {!resultadoIA ? (
             <Button 
-              onClick={handleAnalisarComIA} 
+              onClick={() => handleAnalisarComIA()} 
               color="secondary" 
               variant="contained"
               disabled={analisandoIA || !textoIntimacao.trim()}

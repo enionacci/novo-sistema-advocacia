@@ -7,10 +7,6 @@ import {
   TextField,
   Alert,
   CircularProgress,
-  LinearProgress,
-  Stepper,
-  Step,
-  StepLabel,
   Card,
   CardContent,
   Chip,
@@ -37,27 +33,22 @@ import {
   Description as DocumentIcon
 } from '@mui/icons-material';
 import axios from '../utils/axiosInstance';
-import PDFPreviewer from '../components/PDFPreviewer';
 
 const ScannerPage = () => {
-  const [activeStep, setActiveStep] = useState(0);
   const [arquivo, setArquivo] = useState(null);
   const [textoExtraido, setTextoExtraido] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
 
-  // ===================================
-  // ESTADOS PARA SALVAR DOCUMENTO - CORRIGIDOS
-  // ===================================
+  // Estados para salvar documento
   const [saveDialog, setSaveDialog] = useState(false);
   const [documentTitle, setDocumentTitle] = useState('');
-  const [clienteId, setClienteId] = useState(''); // OPCIONAL agora
+  const [clienteId, setClienteId] = useState('');
   const [clientes, setClientes] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  // Carregar clientes ao montar o componente
+  // Carregar clientes ao montar
   useEffect(() => {
     loadClientes();
   }, []);
@@ -68,7 +59,6 @@ const ScannerPage = () => {
       setClientes(response.data.results || []);
     } catch (err) {
       console.error('Erro ao carregar clientes:', err);
-      // Não é erro crítico se falhar carregar clientes
     }
   };
 
@@ -77,109 +67,76 @@ const ScannerPage = () => {
     if (file) {
       setArquivo(file);
       setError('');
+      setTextoExtraido('');
+      setSuccess('');
     }
   };
 
   const handleRemoveFile = () => {
     setArquivo(null);
     setTextoExtraido('');
-    setActiveStep(0);
-    setProgress({ current: 0, total: 0 });
     setSuccess('');
     setError('');
-    // Limpar dados do dialog de salvar
     setDocumentTitle('');
     setClienteId('');
     setSaveDialog(false);
   };
 
-  const startOcrProcess = async (url, formData) => {
+  // ===================================
+  // EXTRAÇÃO DE TEXTO - SIMPLES E DIRETA
+  // ===================================
+
+  const handleExtrairTexto = async () => {
+    if (!arquivo) return;
+
+    // Valida se é PDF
+    if (arquivo.type !== 'application/pdf' && !arquivo.name.toLowerCase().endsWith('.pdf')) {
+      setError('Formato não suportado. Envie apenas arquivos PDF.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setSuccess('');
-    setProgress({ current: 0, total: 0 });
-    setActiveStep(1); // Move to progress step
 
     try {
-      const response = await axios.post(url, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+      const formData = new FormData();
+      formData.append('arquivo', arquivo);
+
+      const response = await axios.post('/api/documentos/extrair-texto/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30000 // 30s timeout (pypdf é instantâneo)
       });
 
       if (response.data.success) {
-        const taskId = response.data.task_id;
+        const texto = response.data.texto || '';
+        setTextoExtraido(texto);
 
-        const pollProgress = setInterval(async () => {
-          try {
-            const progressResponse = await axios.get(`/api/documentos/ocr-progress/${taskId}/`);
-            const progressData = progressResponse.data;
-
-            setProgress({
-              current: progressData.current_page,
-              total: progressData.total_pages
-            });
-
-            if (progressData.status === 'concluido') {
-              clearInterval(pollProgress);
-              setLoading(false);
-              setTextoExtraido(progressData.resultado.texto || 'Nenhum texto encontrado.');
-              setSuccess('Texto extraído com sucesso!');
-              setActiveStep(2); // Move to save step
-
-              // ✅ GERAR TÍTULO AUTOMÁTICO BASEADO NO ARQUIVO
-              generateAutoTitle();
-            } else if (progressData.status === 'erro') {
-              clearInterval(pollProgress);
-              setLoading(false);
-              setError(progressData.message || 'Erro no processamento do documento.');
-              setActiveStep(0); // Return to upload step
-            }
-          } catch (progressError) {
-            clearInterval(pollProgress);
-            console.error('Erro ao consultar progresso:', progressError);
-            setError('Não foi possível obter o progresso do processamento.');
-            setLoading(false);
-            setActiveStep(0);
-          }
-        }, 2000);
+        if (texto.trim()) {
+          setSuccess(response.data.mensagem || 'Texto extraído com sucesso!');
+          generateAutoTitle();
+        } else {
+          setError('Nenhum texto encontrado no PDF. O documento pode ser escaneado (imagem).');
+        }
       } else {
-        setError(response.data.error || 'Erro ao iniciar processamento');
-        setLoading(false);
-        setActiveStep(0);
+        setError(response.data.error || 'Erro ao extrair texto.');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao enviar documento para OCR');
-      console.error('Erro no OCR:', err);
+      const errorMsg = err.response?.data?.error ||
+                       (err.code === 'ECONNABORTED' ? 'Tempo limite excedido.' : 'Erro ao processar o PDF.');
+      setError(errorMsg);
+      console.error('Erro na extração:', err);
+    } finally {
       setLoading(false);
-      setActiveStep(0);
     }
   };
 
-  // Handler para OCR de arquivo inteiro (imagens)
-  const handleOcrFull = async () => {
-    if (!arquivo) return;
-    const formData = new FormData();
-    formData.append('arquivo', arquivo);
-    startOcrProcess('/api/documentos/ocr-async/', formData);
-  };
-
-  // Handler para OCR com margens (PDFs)
-  const handleProcessWithMargins = (margins) => {
-    if (!arquivo) return;
-    const formData = new FormData();
-    formData.append('arquivo', arquivo);
-    formData.append('margins', JSON.stringify(margins));
-    startOcrProcess('/api/documentos/ocr-full-with-margins/', formData);
-  };
-
   // ===================================
-  // FUNÇÕES PARA SALVAR DOCUMENTO - CORRIGIDAS
+  // SALVAR DOCUMENTO
   // ===================================
 
   const generateAutoTitle = () => {
     if (arquivo) {
-      // Remover extensão e usar nome do arquivo
       const baseName = arquivo.name.replace(/\.[^/.]+$/, "");
       const now = new Date();
       const dateTime = now.toLocaleDateString('pt-BR') + ' ' + now.toLocaleTimeString('pt-BR', {
@@ -195,22 +152,15 @@ const ScannerPage = () => {
       setError('Nenhum texto extraído para salvar. Processe um documento primeiro.');
       return;
     }
-
     if (!documentTitle) {
       generateAutoTitle();
     }
-
     setSaveDialog(true);
   };
 
   const handleSaveDocument = async () => {
     if (!documentTitle.trim()) {
       setError('Por favor, insira um título para o documento.');
-      return;
-    }
-
-    if (!textoExtraido.trim()) {
-      setError('Nenhum texto extraído para salvar.');
       return;
     }
 
@@ -225,12 +175,7 @@ const ScannerPage = () => {
         nome_arquivo_original: arquivo?.name || ''
       };
 
-      console.log('💾 Salvando via endpoint específico do scanner:', documentData);
-
-      // ✅ USAR ENDPOINT ESPECÍFICO PARA SCANNER
       const response = await axios.post('/api/documentos/salvar-scanner/', documentData);
-
-      console.log('✅ Resposta da API:', response.data);
 
       if (response.data.success) {
         setSuccess(`✅ Documento "${documentTitle}" salvo com sucesso! ID: ${response.data.id}`);
@@ -242,61 +187,11 @@ const ScannerPage = () => {
           }
         }, 1500);
       }
-
     } catch (err) {
-      console.error('❌ Erro ao salvar:', err);
-      console.error('❌ Response:', err.response?.data);
-
       const errorMsg = err.response?.data?.error || err.response?.data?.details || 'Erro ao salvar documento';
       setError(errorMsg);
     } finally {
       setSaving(false);
-    }
-  };
-  
-  // ✅ MÉTODO ALTERNATIVO USANDO FORMDATA
-  const saveDocumentAlternative = async () => {
-    try {
-      const formData = new FormData();
-      formData.append('titulo', documentTitle.trim());
-      formData.append('texto_extraido', textoExtraido.trim());
-
-      if (clienteId) {
-        formData.append('cliente', clienteId);
-      }
-
-      // ✅ ADICIONAR CAMPOS QUE PODEM SER NECESSÁRIOS
-      formData.append('tipo_documento', 'digitalizado');
-      formData.append('origem', 'scanner_manual');
-      formData.append('tem_texto', 'true');
-      formData.append('publico', 'false');
-
-      if (arquivo?.name) {
-        formData.append('nome_arquivo_original', arquivo.name);
-      }
-
-      console.log('🔄 Tentando salvar com FormData...');
-
-      const response = await axios.post('/api/documentos/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      if (response.data.id || response.status === 201) {
-        setSuccess(`✅ Documento "${documentTitle}" salvo com sucesso! ID: ${response.data.id}`);
-        setSaveDialog(false);
-
-        setTimeout(() => {
-          if (window.confirm('Documento salvo!\n\nEscanear outro?')) {
-            handleRemoveFile();
-          }
-        }, 1500);
-      }
-
-    } catch (altErr) {
-      console.error('❌ Método alternativo também falhou:', altErr);
-      setError('Erro ao salvar documento. Verifique se todos os campos obrigatórios estão preenchidos.');
     }
   };
 
@@ -310,18 +205,11 @@ const ScannerPage = () => {
               Scanner de Documentos
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Defina as margens para ignorar cabeçalhos e rodapés, e extraia o texto de seus documentos.
+              Faça upload de um PDF para extrair o texto automaticamente.
+              O sistema extrai o texto de PDFs digitais de forma instantânea.
             </Typography>
           </Box>
         </Box>
-
-        <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-          {['Configurar Documento', 'Processando', 'Resultado'].map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
 
         {error && (
           <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
@@ -334,17 +222,18 @@ const ScannerPage = () => {
           </Alert>
         )}
 
-        {activeStep !== 1 && !loading && !textoExtraido && (
-          <Card variant="outlined">
+        {/* PASSO 1: UPLOAD */}
+        {!textoExtraido && (
+          <Card variant="outlined" sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                1. Faça Upload do Documento
+                1. Selecione o PDF
               </Typography>
 
               {!arquivo ? (
                 <Button variant="contained" component="label" startIcon={<UploadIcon />} size="large">
-                  Selecionar Arquivo
-                  <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.tiff,.bmp" onChange={handleFileChange} />
+                  Selecionar Arquivo PDF
+                  <input type="file" hidden accept=".pdf" onChange={handleFileChange} />
                 </Button>
               ) : (
                 <Box>
@@ -353,50 +242,47 @@ const ScannerPage = () => {
                     onDelete={handleRemoveFile}
                     deleteIcon={<ClearIcon />}
                     color="primary"
-                    sx={{ maxWidth: 300, mb: 2 }}
+                    sx={{ maxWidth: 400, mb: 2 }}
                   />
-                  {arquivo.type === 'application/pdf' ? (
-                    <PDFPreviewer file={arquivo} onExtractWithMargins={handleProcessWithMargins} />
-                  ) : (
-                    <Button variant="contained" color="primary" onClick={handleOcrFull} disabled={loading} startIcon={loading ? <CircularProgress size={20} /> : <ScannerIcon />}>
-                      {loading ? 'Processando...' : 'Extrair Texto (OCR)'}
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      size="large"
+                      onClick={handleExtrairTexto}
+                      disabled={loading}
+                      startIcon={loading ? <CircularProgress size={20} /> : <ScannerIcon />}
+                    >
+                      {loading ? 'Extraindo texto...' : 'Extrair Texto'}
                     </Button>
-                  )}
+                  </Box>
                 </Box>
               )}
             </CardContent>
           </Card>
         )}
 
-        {activeStep === 1 && (
-          <Card variant="outlined">
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" gutterBottom>Processando Documento</Typography>
-              <CircularProgress sx={{ my: 2 }} />
-              {progress.total > 0 && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Processando página {progress.current} de {progress.total}...
-                  </Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={(progress.current / progress.total) * 100}
-                    sx={{ height: 8, borderRadius: 4 }}
-                  />
-                </Box>
-              )}
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Isso pode levar alguns instantes, dependendo do tamanho do documento.
+        {/* LOADING */}
+        {loading && (
+          <Card variant="outlined" sx={{ mb: 3 }}>
+            <CardContent sx={{ textAlign: 'center', py: 4 }}>
+              <CircularProgress size={48} sx={{ mb: 2 }} />
+              <Typography variant="h6" gutterBottom>
+                Extraindo texto...
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Processando o PDF. Isso leva apenas alguns segundos.
               </Typography>
             </CardContent>
           </Card>
         )}
 
-        {activeStep === 2 && (
+        {/* PASSO 2: RESULTADO */}
+        {textoExtraido && !loading && (
           <Card variant="outlined" sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                📄 Resultado da Extração
+                📄 Texto Extraído
               </Typography>
 
               <TextField
@@ -410,38 +296,20 @@ const ScannerPage = () => {
                 placeholder="Texto extraído aparecerá aqui..."
               />
 
-              {/* ESTATÍSTICAS DO TEXTO */}
+              {/* Estatísticas */}
               <Box sx={{ mb: 3, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Chip
-                  label={`${textoExtraido.length} caracteres`}
-                  color="primary"
-                  size="small"
-                />
-                <Chip
-                  label={`${textoExtraido.split(/\s+/).filter(word => word.length > 0).length} palavras`}
-                  color="secondary"
-                  size="small"
-                />
-                <Chip
-                  label={`${textoExtraido.split('\n').length} linhas`}
-                  color="info"
-                  size="small"
-                />
+                <Chip label={`${textoExtraido.length} caracteres`} color="primary" size="small" />
+                <Chip label={`${textoExtraido.split(/\s+/).filter(w => w.length > 0).length} palavras`} color="secondary" size="small" />
+                <Chip label={`${textoExtraido.split('\n').length} linhas`} color="info" size="small" />
               </Box>
 
               <Divider sx={{ my: 2 }} />
 
-              {/* BOTÕES DE AÇÃO */}
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'space-between', alignItems: 'center' }}>
-                <Button
-                  variant="outlined"
-                  onClick={handleRemoveFile}
-                  startIcon={<ClearIcon />}
-                >
-                  Escanear Outro Documento
+              {/* Botões */}
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'space-between' }}>
+                <Button variant="outlined" onClick={handleRemoveFile} startIcon={<ClearIcon />}>
+                  Novo Documento
                 </Button>
-
-                {/* ✅ BOTÃO SALVAR DOCUMENTO */}
                 <Button
                   variant="contained"
                   color="success"
@@ -449,11 +317,7 @@ const ScannerPage = () => {
                   onClick={handleOpenSaveDialog}
                   startIcon={<SaveIcon />}
                   disabled={!textoExtraido.trim()}
-                  sx={{
-                    minWidth: 200,
-                    fontSize: '1.1rem',
-                    fontWeight: 'bold'
-                  }}
+                  sx={{ minWidth: 200, fontSize: '1.1rem', fontWeight: 'bold' }}
                 >
                   💾 Salvar no Sistema
                 </Button>
@@ -463,16 +327,8 @@ const ScannerPage = () => {
         )}
       </Paper>
 
-      {/* ===================================
-          DIALOG DE SALVAR - CLIENTE OPCIONAL
-          =================================== */}
-
-      <Dialog
-        open={saveDialog}
-        onClose={() => setSaveDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
+      {/* DIALOG DE SALVAR */}
+      <Dialog open={saveDialog} onClose={() => setSaveDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <SaveIcon sx={{ mr: 1, color: 'success.main' }} />
@@ -525,16 +381,8 @@ const ScannerPage = () => {
                           }
                           <Box>
                             <Typography variant="body1">{cliente.nome}</Typography>
-                            {cliente.tipo_cliente === 'pessoa_fisica' && cliente.cpf && (
-                              <Typography variant="caption" color="text.secondary">
-                                CPF: {cliente.cpf}
-                              </Typography>
-                            )}
-                            {cliente.tipo_cliente === 'pessoa_juridica' && cliente.cnpj && (
-                              <Typography variant="caption" color="text.secondary">
-                                CNPJ: {cliente.cnpj}
-                              </Typography>
-                            )}
+                            {cliente.cpf && <Typography variant="caption" color="text.secondary">CPF: {cliente.cpf}</Typography>}
+                            {cliente.cnpj && <Typography variant="caption" color="text.secondary">CNPJ: {cliente.cnpj}</Typography>}
                           </Box>
                         </Box>
                       </MenuItem>
@@ -553,38 +401,13 @@ const ScannerPage = () => {
                     {textoExtraido.length > 500 && '...'}
                   </Typography>
                 </Paper>
-                <Box sx={{ mt: 1, display: 'flex', gap: 1, justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Chip
-                      label={`${textoExtraido.length} caracteres`}
-                      size="small"
-                      color="primary"
-                    />
-                    <Chip
-                      label={`${textoExtraido.split(/\s+/).filter(word => word.length > 0).length} palavras`}
-                      size="small"
-                      color="secondary"
-                    />
-                  </Box>
-                  {arquivo && (
-                    <Chip
-                      label={`Arquivo: ${arquivo.name}`}
-                      size="small"
-                      color="info"
-                      variant="outlined"
-                    />
-                  )}
-                </Box>
               </Grid>
             </Grid>
           </Box>
         </DialogContent>
 
         <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button
-            onClick={() => setSaveDialog(false)}
-            disabled={saving}
-          >
+          <Button onClick={() => setSaveDialog(false)} disabled={saving}>
             Cancelar
           </Button>
           <Button

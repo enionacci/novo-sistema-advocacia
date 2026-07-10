@@ -578,6 +578,33 @@ class Movimentacao(models.Model):
         verbose_name='Lido'
     )
     
+    # Análise com IA
+    analisada_ia = models.BooleanField(
+        default=False,
+        verbose_name='Analisada por IA',
+        help_text='Indica se esta movimentação foi analisada pela IA'
+    )
+    data_analise_ia = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name='Data da Análise IA',
+        help_text='Quando a análise foi realizada'
+    )
+    resultado_analise_ia = models.JSONField(
+        blank=True,
+        null=True,
+        verbose_name='Resultado da Análise IA',
+        help_text='Resultado completo da análise (prazos, audiências, etc.)'
+    )
+    analisada_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='movimentacoes_analisadas',
+        verbose_name='Analisada por'
+    )
+    
     class Meta:
         ordering = ['-data_movimentacao']
         verbose_name = 'Movimentação'

@@ -314,7 +314,11 @@ class Documento(models.Model):
     def save(self, *args, **kwargs):
         """
         Calcula o hash MD5 do arquivo no primeiro save
+        E comprime PDFs maiores que 5MB
         """
+        # Importação local para evitar dependência circular
+        from .utils import compress_pdf
+
         # Verifica se é um update parcial (ex: apenas visualizacoes, ativo, etc)
         update_fields = kwargs.get('update_fields', None)
         should_process_file = (
@@ -327,22 +331,37 @@ class Documento(models.Model):
         )
         
         # Só processa o arquivo se necessário
-        if should_process_file:
-            if self.arquivo and not self.hash_md5:
+        if should_process_file and self.arquivo:
+            # Se não tem hash, assumimos que é um arquivo novo ou alterado que precisa ser processado
+            if not self.hash_md5:
+                # Verifica se é PDF e maior que 5MB (5 * 1024 * 1024 bytes)
+                try:
+                    is_pdf = self.arquivo.name.lower().endswith('.pdf')
+                    is_large = self.arquivo.size > (5 * 1024 * 1024)
+                    
+                    if is_pdf and is_large:
+                        # Comprime o arquivo
+                        compressed_file = compress_pdf(self.arquivo)
+                        
+                        # Atualiza o arquivo com a versão comprimida
+                        self.arquivo = compressed_file
+                except Exception as e:
+                    print(f"Erro ao tentar comprimir PDF no save: {e}")
+
+                # Calcula o hash MD5 (do arquivo original ou comprimido)
                 md5_hash = hashlib.md5()
                 for chunk in self.arquivo.chunks():
                     md5_hash.update(chunk)
                 self.hash_md5 = md5_hash.hexdigest()
             
-            # Extrai tipo e tamanho do arquivo
-            if self.arquivo:
-                try:
-                    self.nome_original = os.path.basename(self.arquivo.name)
-                    self.tipo_arquivo = os.path.splitext(self.arquivo.name)[1].lower().replace('.', '')
-                    self.tamanho = self.arquivo.size
-                except (FileNotFoundError, OSError):
-                    # Se o arquivo físico não existir, mantém os valores existentes
-                    pass
+            # Extrai tipo e tamanho do arquivo (sempre atualiza para garantir consistência)
+            try:
+                self.nome_original = os.path.basename(self.arquivo.name)
+                self.tipo_arquivo = os.path.splitext(self.arquivo.name)[1].lower().replace('.', '')
+                self.tamanho = self.arquivo.size
+            except (FileNotFoundError, OSError):
+                # Se o arquivo físico não existir, mantém os valores existentes
+                pass
 
         super().save(*args, **kwargs)
 

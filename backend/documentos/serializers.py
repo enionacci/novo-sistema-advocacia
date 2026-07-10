@@ -87,15 +87,22 @@ class DocumentoListSerializer(serializers.ModelSerializer):
         return 'Sistema'
 
     def get_arquivo_url(self, obj):
-        """Retorna a URL do arquivo com HTTPS se necessário"""
-        if obj.arquivo:
+        """Retorna a URL do endpoint de download com inline=true"""
+        if obj.id:
             request = self.context.get('request')
             if request:
-                url = request.build_absolute_uri(obj.arquivo.url)
+                # Constrói a URL para o endpoint de download
+                from django.urls import reverse
+                url = reverse('documento-download', kwargs={'pk': obj.id})
+                absolute_url = request.build_absolute_uri(url)
+                
+                # Adiciona parâmetro inline
+                final_url = f"{absolute_url}?inline=true"
+                
                 # Força HTTPS em produção
-                if url.startswith('http://') and 'easypanel' in url:
-                    url = url.replace('http://', 'https://')
-                return url
+                if final_url.startswith('http://') and 'easypanel' in final_url:
+                    final_url = final_url.replace('http://', 'https://')
+                return final_url
         return None
 
 

@@ -1,11 +1,12 @@
-# Frontend Dockerfile para React
-FROM node:20-alpine
+# Frontend Dockerfile para React - PRODUÇÃO
+# Multi-stage build para otimização
 
-# Metadados
+# Stage 1: Build da aplicação
+FROM node:20-alpine AS builder
+
 LABEL maintainer="Sistema de Advocacia"
-LABEL description="Frontend React para Sistema de Advocacia"
+LABEL description="Frontend React - Build Stage"
 
-# Diretório de trabalho
 WORKDIR /app
 
 # Copiar arquivos de dependências
@@ -17,19 +18,24 @@ RUN npm install
 # Copiar código da aplicação
 COPY . .
 
-# Expor porta do React (mudada para 3001 para evitar conflito com Easypanel)
-EXPOSE 3001
+# Build da aplicação para produção
+# A URL da API será configurada em tempo de execução via ENV
+RUN npm run build
 
-# Definir porta customizada
-ENV PORT=3001
+# Stage 2: Servidor Nginx para produção
+FROM nginx:alpine
 
-# Desabilitar verificação de host (necessário para deployment)
-ENV DANGEROUSLY_DISABLE_HOST_CHECK=true
+LABEL maintainer="Sistema de Advocacia"
+LABEL description="Frontend React - Production"
 
-# Permitir qualquer host do webpack dev server
-ENV WDS_SOCKET_HOST=0.0.0.0
-ENV WATCHPACK_POLLING=true
-ENV CHOKIDAR_USEPOLLING=true
+# Copiar arquivos buildados do stage anterior
+COPY --from=builder /app/build /usr/share/nginx/html
 
-# Comando para iniciar o servidor de desenvolvimento
-CMD ["npm", "start"]
+# Copiar configuração do nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expor porta 80
+EXPOSE 80
+
+# Iniciar nginx
+CMD ["nginx", "-g", "daemon off;"]

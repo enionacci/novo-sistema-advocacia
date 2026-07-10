@@ -34,20 +34,14 @@ services:
       dockerfile: Dockerfile
     container_name: advocacia-frontend
     ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules  # Evita sobrescrever node_modules do container
+      - "80:80"
     environment:
       - REACT_APP_API_URL=http://localhost:8000
-      - CHOKIDAR_USEPOLLING=true  # Para hot-reload funcionar no Windows
     depends_on:
       - backend
     restart: unless-stopped
     networks:
       - advocacia-network
-    stdin_open: true  # Para o React não fechar
-    tty: true
 
 volumes:
   backend-static:

@@ -183,6 +183,9 @@ CSRF_TRUSTED_ORIGINS = [
 # Frame options (para desenvolvimento)
 X_FRAME_OPTIONS = None
 
+# Configuração para detectar HTTPS atrás de proxy (Nginx)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

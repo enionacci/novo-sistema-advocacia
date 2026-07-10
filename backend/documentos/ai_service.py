@@ -15,17 +15,13 @@ import pytesseract
 from pdf2image import convert_from_bytes
 from PIL import Image
 from openai import OpenAI
-import fitz
+# import fitz  # Removido import top-level para evitar crash
 from .progress_service import progress_tracker
 
-# Importações para EasyOCR (opcional - instala apenas se disponível)
-try:
-    import easyocr
-    EASYOCR_AVAILABLE = True
-    print("✅ EasyOCR disponível")
-except ImportError:
-    EASYOCR_AVAILABLE = False
-    print("⚠️ EasyOCR não instalado. Use: pip install easyocr")
+# EasyOCR foi removido para simplificar e reduzir consumo de memória.
+# Para PDFs digitais, pypdf é suficiente e instantâneo.
+# Para PDFs escaneados, Tesseract (já instalado) é usado como fallback.
+EASYOCR_AVAILABLE = False
 
 # Configuração do Tesseract para Windows
 if platform.system() == 'Windows':
@@ -185,6 +181,7 @@ def analyze_pdf_type_simple(arquivo_bytes: bytes) -> dict:
     Análise MUITO mais agressiva para detectar PDFs escaneados
     """
     try:
+        import fitz
         doc = fitz.open(stream=arquivo_bytes, filetype="pdf")
         
         total_pages = len(doc)
@@ -333,50 +330,13 @@ def extract_text_tesseract_fallback(arquivo_bytes: bytes, task_id: str) -> str:
 class OCRService:
     """
     Serviço para extração de texto de documentos (OCR)
-    Suporta PDFs e imagens com EasyOCR e Tesseract
+    Usa Tesseract como método principal para PDFs escaneados.
+    Para PDFs digitais, use pypdf (mais rápido) via extrair_texto_pdf().
     """
     
     def __init__(self):
         """Inicializa o serviço OCR"""
-        self.easyocr_reader = None
-        if EASYOCR_AVAILABLE:
-            try:
-                # Inicializa EasyOCR uma vez (carrega modelos)
-                self.easyocr_reader = easyocr.Reader(['pt'], gpu=False)
-                print("✅ EasyOCR Reader inicializado")
-            except Exception as e:
-                print(f"⚠️ Erro ao inicializar EasyOCR: {e}")
-                self.easyocr_reader = None
-    
-    def extract_text_from_image_easyocr(self, arquivo_bytes: bytes) -> str:
-        """
-        Extrai texto usando EasyOCR (método principal)
-        """
-        if not self.easyocr_reader:
-            raise Exception("EasyOCR não disponível")
-        
-        try:
-            # EasyOCR trabalha diretamente com bytes
-            result = self.easyocr_reader.readtext(arquivo_bytes)
-            
-            # Extrai texto das detecções, mantendo estrutura
-            textos = []
-            for detection in result:
-                bbox, texto, confidence = detection
-                # Filtra resultados com baixa confiança
-                if confidence > 0.3 and texto.strip():
-                    textos.append(texto)
-            
-            texto_bruto = '\n'.join(textos)
-            
-            # APLICA RECONSTRUÇÃO INTELIGENTE
-            texto_final = smart_text_reconstruction(texto_bruto)
-            
-            print(f"✅ EasyOCR extraiu {len(texto_final)} caracteres")
-            return texto_final
-            
-        except Exception as e:
-            raise Exception(f"Erro no EasyOCR: {str(e)}")
+        pass
     
     def extract_text_from_image_tesseract(self, arquivo_bytes: bytes) -> str:
         """
@@ -438,69 +398,8 @@ class OCRService:
             raise Exception(f"Erro no Tesseract: {str(e)}")
     
     def extract_text_from_image_hybrid(self, arquivo_bytes: bytes) -> str:
-        """
-        Método híbrido: tenta EasyOCR primeiro, fallback para Tesseract
-        """
-        # Tenta EasyOCR primeiro (mais preciso)
-        if self.easyocr_reader:
-            try:
-                resultado_easy = self.extract_text_from_image_easyocr(arquivo_bytes)
-                if resultado_easy.strip():
-                    return resultado_easy
-            except Exception as e:
-                print(f"⚠️ EasyOCR falhou: {e}. Tentando Tesseract...")
-        
-        # Fallback para Tesseract
+        """Extrai texto de imagem usando Tesseract"""
         return self.extract_text_from_image_tesseract(arquivo_bytes)
-    
-    def extract_text_from_pdf_easyocr(self, arquivo_bytes: bytes, task_id: str = None) -> str:
-        """
-        OCR de PDF usando EasyOCR
-        """
-        if not task_id:
-            task_id = str(uuid.uuid4())
-        
-        try:
-            progress_tracker.update_progress(task_id, 0, "Convertendo PDF para imagens...")
-            
-            images = convert_from_bytes(
-                arquivo_bytes,
-                dpi=300,
-                fmt='png',
-                poppler_path=POPPLER_PATH if platform.system() == 'Windows' else None
-            )
-            
-            total_paginas = len(images)
-            progress_tracker.set_total_pages(task_id, total_paginas)
-            textos = []
-            
-            for i, image in enumerate(images):
-                pagina_atual = i + 1
-                progress_tracker.update_progress(
-                    task_id, 
-                    pagina_atual, 
-                    f"OCR EasyOCR da página {pagina_atual}/{total_paginas}..."
-                )
-                
-                # Converte PIL Image para bytes
-                img_byte_arr = io.BytesIO()
-                image.save(img_byte_arr, format='PNG')
-                img_bytes = img_byte_arr.getvalue()
-                
-                # OCR com EasyOCR
-                texto_pagina = self.extract_text_from_image_easyocr(img_bytes)
-                
-                if texto_pagina.strip():
-                    textos.append(f"--- Página {pagina_atual} ---\n{texto_pagina}")
-            
-            texto_bruto = '\n\n'.join(textos)
-            
-            # APLICA RECONSTRUÇÃO INTELIGENTE FINAL
-            texto_final = smart_text_reconstruction(texto_bruto)
-            
-            progress_tracker.complete_progress(task_id, True)
-            return texto_final
-            
         except Exception as e:
             error_message = f"Erro no OCR EasyOCR do PDF: {str(e)}"
             progress_tracker.complete_progress(task_id, False, error_message)
@@ -542,18 +441,8 @@ class OCRService:
                     progress_tracker.complete_progress(task_id, False, msg)
                     raise Exception(msg)
                 
-                # Vai direto para OCR
-                ocr_service = OCRService()
-                
-                if ocr_service.easyocr_reader:
-                    try:
-                        print("🚀 Tentando EasyOCR...")
-                        return ocr_service.extract_text_from_pdf_easyocr(arquivo_bytes, task_id)
-                    except Exception as e:
-                        print(f"⚠️ EasyOCR falhou: {e}. Usando Tesseract...")
-                
-                # Fallback para Tesseract
-                print("🚀 Usando Tesseract...")
+                # Vai direto para OCR com Tesseract (já instalado no Docker)
+                print("🚀 Usando Tesseract para OCR...")
                 return extract_text_tesseract_fallback(arquivo_bytes, task_id)
                 
         except Exception as e:
@@ -573,6 +462,7 @@ class OCRService:
         try:
             progress_tracker.update_progress(task_id, 0, "Iniciando extração de região...")
             
+            import fitz
             doc = fitz.open(arquivo_path)
             
             # Valida número da página
@@ -664,6 +554,7 @@ class OCRService:
         try:
             progress_tracker.update_progress(task_id, 0, "Extraindo texto diretamente com margens...")
             
+            import fitz
             doc = fitz.open(arquivo_path)
             progress_tracker.set_total_pages(task_id, doc.page_count)
 
@@ -753,15 +644,8 @@ class OCRService:
                 cropped_image.save(img_byte_arr, format='PNG')
                 img_bytes = img_byte_arr.getvalue()
                 
-                # Faz OCR na imagem cortada
-                if ocr_service.easyocr_reader:
-                    try:
-                        texto = ocr_service.extract_text_from_image_easyocr(img_bytes)
-                    except Exception as e:
-                        print(f"⚠️ EasyOCR falhou na página {pagina_atual}: {e}. Usando Tesseract...")
-                        texto = ocr_service.extract_text_from_image_tesseract(img_bytes)
-                else:
-                    texto = ocr_service.extract_text_from_image_tesseract(img_bytes)
+                # Faz OCR na imagem cortada usando Tesseract
+                texto = ocr_service.extract_text_from_image_tesseract(img_bytes)
                 
                 if texto.strip():
                     textos_ocr.append(f"--- Página {pagina_atual} ---\n{texto}")

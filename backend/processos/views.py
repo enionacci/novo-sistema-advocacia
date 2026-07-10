@@ -346,16 +346,32 @@ class ProcessoViewSet(viewsets.ModelViewSet):
     def analisar_intimacao_ia(self, request):
         """
         Analisa texto de intimação com IA para extrair prazos e audiências
-        Body: { "texto": "conteúdo da intimação...", "data_intimacao": "2025-11-02" }
+        Body: { 
+            "texto": "conteúdo da intimação...", 
+            "data_intimacao": "2025-11-02",
+            "movimentacao_id": 123  # Opcional - ID da movimentação sendo analisada
+        }
         """
         texto = request.data.get('texto', '').strip()
         data_intimacao = request.data.get('data_intimacao', '')
+        movimentacao_id = request.data.get('movimentacao_id')
         
         if not texto:
             return Response(
                 {'erro': 'Texto da intimação é obrigatório'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Se forneceu movimentacao_id, busca a movimentação
+        movimentacao = None
+        if movimentacao_id:
+            try:
+                movimentacao = Movimentacao.objects.get(id=movimentacao_id)
+            except Movimentacao.DoesNotExist:
+                return Response(
+                    {'erro': 'Movimentação não encontrada'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
         
         try:
             # Busca API key do escritório
@@ -484,12 +500,48 @@ INSTRUÇÕES:
                         print(f"Erro ao processar audiência: {e}")
                         continue
                 
+                # Salva o resultado na movimentação se foi fornecida
+                if movimentacao:
+                    from django.utils import timezone as tz
+                    
+                    # Converte dados para formato serializável (apenas strings e números)
+                    resultado_serializavel = {
+                        'total_prazos': len(prazos_processados),
+                        'total_audiencias': len(audiencias_processadas),
+                        'analisado_em': tz.now().isoformat(),
+                        'prazos': [
+                            {
+                                'descricao': p.get('descricao', ''),
+                                'prazo_dias': p.get('prazo_dias', 0),
+                                'prioridade': p.get('prioridade', 'media'),
+                                'data_inicio': str(p.get('data_inicio', '')),
+                                'data_limite': str(p.get('data_limite', ''))
+                            } for p in prazos_processados
+                        ],
+                        'audiencias': [
+                            {
+                                'tipo': a.get('tipo', 'outras'),
+                                'descricao': a.get('pauta', ''),
+                                'data_hora': str(a.get('data_hora', '')) if a.get('data_hora') else None
+                            } for a in audiencias_processadas
+                        ]
+                    }
+                    
+                    movimentacao.analisada_ia = True
+                    movimentacao.data_analise_ia = tz.now()
+                    movimentacao.resultado_analise_ia = resultado_serializavel
+                    movimentacao.analisada_por = request.user
+                    movimentacao.save()
+                    
+                    print(f"✅ Análise salva na movimentação #{movimentacao.id}")
+                
                 return Response({
                     'sucesso': True,
                     'prazos': prazos_processados,
                     'audiencias': audiencias_processadas,
                     'total_prazos': len(prazos_processados),
-                    'total_audiencias': len(audiencias_processadas)
+                    'total_audiencias': len(audiencias_processadas),
+                    'movimentacao_analisada': movimentacao.id if movimentacao else None
                 })
                 
             except json.JSONDecodeError as e:

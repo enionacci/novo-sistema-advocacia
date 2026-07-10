@@ -39,7 +39,8 @@ RUN tesseract --version && \
 # Copiar requirements
 COPY requirements.txt .
 
-# Instalar dependências Python
+# Instalar dependências Python (sem torch/easyocr para economizar memória)
+# pypdf já está no requirements.txt e é suficiente para PDFs digitais
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
@@ -61,4 +62,4 @@ RUN sed -i 's/\r$//g' /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "1"]
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "1", "--timeout", "300", "--worker-connections", "1000"]

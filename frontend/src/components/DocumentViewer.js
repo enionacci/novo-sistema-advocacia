@@ -34,53 +34,93 @@ import {
  * 
  * Incrementa automaticamente o contador de visualizações
  */
-const DocumentViewer = ({ 
-  open, 
-  onClose, 
-  documento, 
+const DocumentViewer = ({
+  open,
+  onClose,
+  documento,
   onIncrementView,
-  onDownload 
+  onDownload
 }) => {
   const [zoom, setZoom] = React.useState(100);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [activeTab, setActiveTab] = React.useState(0);
+  const [pdfBlobUrl, setPdfBlobUrl] = React.useState(null);
   const hasIncremented = useRef(false);
 
-  // Incrementa visualizações quando abre
+  // Incrementa visualizações quando abre e carrega o arquivo
   useEffect(() => {
-    if (open && documento && !hasIncremented.current) {
+    if (open && documento) {
       setLoading(true);
       setError('');
       setZoom(100);
-      
-      // Abre na aba correta: 
-      // - Se NÃO tem arquivo_url, abre direto no texto extraído (aba 1)
-      // - Se tem arquivo_url, abre no arquivo (aba 0)
+      setPdfBlobUrl(null);
+
+      // Abre na aba correta
       const hasTextoExtraido = documento.texto_extraido && documento.texto_extraido.trim().length > 0;
       const hasArquivo = documento.arquivo_url && documento.arquivo_url.trim().length > 0;
       setActiveTab(hasArquivo ? 0 : (hasTextoExtraido ? 1 : 0));
-      
-      // Debug: Log da URL do arquivo
-      console.log('DocumentViewer - Documento:', documento);
-      console.log('DocumentViewer - arquivo_url:', documento.arquivo_url);
-      console.log('DocumentViewer - Abrindo na aba:', hasArquivo ? 'Arquivo' : 'Texto Extraído');
-      
-      // Incrementa contador após um pequeno delay (garante que abriu)
-      const timer = setTimeout(() => {
-        if (onIncrementView) {
+
+      const isViewable = ['pdf', 'jpg', 'jpeg', 'png'].includes(
+        documento.tipo_arquivo?.toLowerCase()
+      );
+
+      // Se for visualizável e tiver URL, faz o fetch autenticado (PDF ou Imagem)
+      if (hasArquivo && isViewable) {
+        import('../utils/axiosInstance').then(module => {
+          const axiosInstance = module.default;
+          console.log('📥 Iniciando download autenticado:', documento.arquivo_url);
+
+          // Normaliza a URL para garantir que use o protocolo correto (HTTPS se estiver em HTTPS)
+          let urlToFetch = documento.arquivo_url;
+          if (window.location.protocol === 'https:' && urlToFetch.startsWith('http://')) {
+            urlToFetch = urlToFetch.replace('http://', 'https://');
+          }
+
+          axiosInstance.get(urlToFetch, {
+            responseType: 'blob',
+            params: { inline: 'true' }
+          })
+            .then(response => {
+              console.log('✅ Arquivo baixado com sucesso, criando Blob URL...');
+              // Determina o tipo MIME correto
+              const mimeType = documento.tipo_arquivo?.toLowerCase() === 'pdf'
+                ? 'application/pdf'
+                : `image/${documento.tipo_arquivo?.toLowerCase() === 'jpg' ? 'jpeg' : documento.tipo_arquivo?.toLowerCase()}`;
+
+              const blob = new Blob([response.data], { type: mimeType });
+              const url = URL.createObjectURL(blob);
+              setPdfBlobUrl(url); // Usamos a mesma state variable para URL do blob (seja PDF ou Imagem)
+              setLoading(false);
+            })
+            .catch(err => {
+              console.error('❌ Erro ao baixar arquivo:', err);
+              setError('Erro ao carregar o documento. Verifique sua conexão ou permissões.');
+              setLoading(false);
+            });
+        });
+      } else {
+        setLoading(false);
+      }
+
+      // Incrementa contador apenas uma vez
+      if (!hasIncremented.current && onIncrementView) {
+        setTimeout(() => {
           onIncrementView(documento.id);
           hasIncremented.current = true;
-        }
-      }, 500);
+        }, 500);
+      }
+    }
 
-      return () => clearTimeout(timer);
-    }
-    
-    // Reset quando fecha
-    if (!open) {
-      hasIncremented.current = false;
-    }
+    // Cleanup do Blob URL
+    return () => {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+      if (!open) {
+        hasIncremented.current = false;
+      }
+    };
   }, [open, documento, onIncrementView]);
 
   if (!documento) return null;
@@ -109,13 +149,12 @@ const DocumentViewer = ({
   };
 
   const handleLoadSuccess = () => {
-    console.log('✅ PDF carregado com sucesso!');
+    console.log('✅ Arquivo carregado com sucesso!');
     setLoading(false);
   };
 
   const handleLoadError = (e) => {
-    console.error('❌ Erro ao carregar PDF:', e);
-    console.error('URL do PDF:', documento?.arquivo_url);
+    console.error('❌ Erro ao carregar arquivo:', e);
     setLoading(false);
     setError('Erro ao carregar o documento. Tente fazer o download.');
   };
@@ -123,7 +162,6 @@ const DocumentViewer = ({
   const handleCopyText = () => {
     if (documento.texto_extraido) {
       navigator.clipboard.writeText(documento.texto_extraido);
-      // Poderia adicionar um snackbar aqui
     }
   };
 
@@ -175,8 +213,8 @@ const DocumentViewer = ({
       <DialogContent dividers sx={{ p: 0, position: 'relative' }}>
         {/* Tabs para alternar entre visualização do arquivo e texto OCR */}
         {hasTextoExtraido && (
-          <Tabs 
-            value={activeTab} 
+          <Tabs
+            value={activeTab}
             onChange={(e, newValue) => setActiveTab(newValue)}
             sx={{ borderBottom: 1, borderColor: 'divider', px: 2, bgcolor: 'background.paper' }}
           >
@@ -233,8 +271,8 @@ const DocumentViewer = ({
             )}
 
             {isViewable && !error && (
-              <Box sx={{ 
-                height: '100%', 
+              <Box sx={{
+                height: '100%',
                 width: '100%',
                 display: 'flex',
                 justifyContent: 'center',
@@ -244,20 +282,8 @@ const DocumentViewer = ({
               }}>
                 {isPDF && (
                   <>
-                    {console.log('🔍 Tentando carregar PDF:', documento.arquivo_url)}
-                    {/* Botão de teste para abrir em nova aba */}
-                    <Box sx={{ position: 'absolute', top: 20, left: 20, zIndex: 1000 }}>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        onClick={() => window.open(documento.arquivo_url, '_blank')}
-                        size="small"
-                      >
-                        Abrir PDF em Nova Aba (Teste)
-                      </Button>
-                    </Box>
                     <iframe
-                      src={documento.arquivo_url}
+                      src={pdfBlobUrl}
                       type="application/pdf"
                       style={{
                         width: '100%',
@@ -283,7 +309,7 @@ const DocumentViewer = ({
                     }}
                   >
                     <img
-                      src={documento.arquivo_url}
+                      src={pdfBlobUrl}
                       alt={documento.titulo}
                       style={{
                         maxWidth: `${zoom}%`,
@@ -304,10 +330,10 @@ const DocumentViewer = ({
         {/* Conteúdo da aba Texto OCR */}
         {activeTab === 1 && hasTextoExtraido && (
           <Box sx={{ p: 3, height: '100%', overflow: 'auto' }}>
-            <Paper 
-              elevation={0} 
-              sx={{ 
-                p: 3, 
+            <Paper
+              elevation={0}
+              sx={{
+                p: 3,
                 bgcolor: 'grey.50',
                 border: '1px solid',
                 borderColor: 'divider',

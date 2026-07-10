@@ -156,19 +156,38 @@ class DocumentoViewSet(viewsets.ModelViewSet):
         """
         Endpoint para download do arquivo
         GET /api/documentos/{id}/download/
+        Query params: ?inline=true (para visualização no navegador)
         """
+        print(f"📥 [DEBUG] Iniciando download do documento {pk}")
         documento = self.get_object()
+        print(f"📥 [DEBUG] Documento encontrado: {documento.titulo} ({documento.tamanho} bytes)")
         
         try:
-            # Incrementa contador de downloads
-            documento.incrementar_downloads()
+            # Incrementa contador de downloads apenas se não for visualização inline
+            inline = request.query_params.get('inline', 'false').lower() == 'true'
+            if not inline:
+                documento.incrementar_downloads()
+                print(f"📥 [DEBUG] Downloads incrementados")
             
             # Retorna o arquivo
-            response = FileResponse(documento.arquivo.open('rb'))
+            if not documento.arquivo:
+                print(f"❌ [DEBUG] Documento sem arquivo!")
+                raise Http404("Documento sem arquivo")
+                
+            print(f"📥 [DEBUG] Abrindo arquivo: {documento.arquivo.path}")
+            file_handle = documento.arquivo.open('rb')
+            response = FileResponse(file_handle)
             response['Content-Type'] = f'application/{documento.tipo_arquivo}'
-            response['Content-Disposition'] = f'attachment; filename="{documento.nome_original}"'
+            
+            if inline:
+                response['Content-Disposition'] = f'inline; filename="{documento.nome_original}"'
+            else:
+                response['Content-Disposition'] = f'attachment; filename="{documento.nome_original}"'
+                
+            print(f"📥 [DEBUG] Resposta preparada (inline={inline}), enviando...")
             return response
         except Exception as e:
+            print(f"❌ [DEBUG] Erro no download: {e}")
             return Response(
                 {'error': f'Erro ao fazer download: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -180,8 +199,10 @@ class DocumentoViewSet(viewsets.ModelViewSet):
         Incrementa o contador de visualizações
         POST /api/documentos/{id}/incrementar-visualizacao/
         """
+        print(f"👁️ [DEBUG] Incrementando visualização do documento {pk}")
         documento = self.get_object()
         documento.incrementar_visualizacoes()
+        print(f"👁️ [DEBUG] Visualização incrementada com sucesso")
         return Response({'visualizacoes': documento.visualizacoes})
 
     @action(detail=False, methods=['get'])
@@ -263,75 +284,93 @@ class OCRProgressView(APIView):
             }, status=500)
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def processar_ocr(request):
-    """
-    Endpoint para iniciar processamento OCR
-    POST /api/documentos/ocr/
-    """
-    try:
-        # Gerar um task_id único
-        task_id = str(uuid.uuid4())
-        
-        # Simular progresso inicial
-        progress_data = {
-            'task_id': task_id,
-            'status': 'processing',
-            'progress': 10,
-            'message': 'Iniciando processamento OCR...'
-        }
-        
-        # Salvar no cache por 30 minutos
-        cache.set(f"ocr_progress_{task_id}", progress_data, 1800)
-        
-        # Aqui você pode iniciar uma task assíncrona (Celery, etc.)
-        # Por enquanto, vamos simular um processamento
-        
-        return Response({
-            'task_id': task_id,
-            'message': 'OCR iniciado com sucesso',
-            'status': 'started'
-        })
-        
-    except Exception as e:
-        return Response({
-            'error': str(e),
-            'status': 'failed'
-        }, status=500)
-
+# ========================================
+# OCR SÍNCRONO SIMPLES - USANDO pypdf
+# ========================================
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def simular_progresso_ocr(request, task_id):
+def extrair_texto_pdf(request):
     """
-    Endpoint para simular atualização de progresso (para desenvolvimento)
-    POST /api/documentos/ocr-progress/{task_id}/update/
+    Endpoint SIMPLES e DIRETO para extrair texto de PDFs.
+    Usa pypdf (já instalado) - NÃO precisa de EasyOCR, PyTorch, threads, etc.
+    
+    POST /api/documentos/extrair-texto/
+    
+    Args:
+        arquivo: O arquivo PDF enviado via multipart/form-data
+    
+    Returns:
+        JSON com o texto extraído instantaneamente
     """
     try:
-        progress = request.data.get('progress', 50)
-        status_value = request.data.get('status', 'processing')
-        message = request.data.get('message', 'Processando...')
+        if 'arquivo' not in request.FILES:
+            return Response(
+                {'error': 'Nenhum arquivo enviado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        progress_data = {
-            'task_id': task_id,
-            'status': status_value,
-            'progress': int(progress),
-            'message': message
-        }
+        arquivo = request.FILES['arquivo']
         
-        # Atualizar no cache
-        cache.set(f"ocr_progress_{task_id}", progress_data, 1800)
+        # Valida extensão
+        nome = arquivo.name.lower()
+        if not nome.endswith('.pdf'):
+            return Response(
+                {'error': 'Formato não suportado. Envie apenas arquivos PDF.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Lê o arquivo para memória
+        arquivo_bytes = arquivo.read()
+        
+        # Extrai texto usando pypdf (INSTANTÂNEO para PDFs digitais)
+        from pypdf import PdfReader
+        import io
+        
+        reader = PdfReader(io.BytesIO(arquivo_bytes))
+        total_paginas = len(reader.pages)
+        texto_completo = []
+        
+        for i, pagina in enumerate(reader.pages):
+            texto = pagina.extract_text()
+            if texto and texto.strip():
+                texto_completo.append(f"--- Página {i + 1} ---\n{texto.strip()}")
+        
+        texto_final = "\n\n".join(texto_completo)
+        
+        if not texto_final.strip():
+            # Se não extraiu texto, tenta com Tesseract (fallback para PDF escaneado)
+            try:
+                print("⚠️ Nenhum texto extraído com pypdf. Tentando OCR Tesseract...")
+                from .ai_service import extract_text_tesseract_fallback
+                texto_final = extract_text_tesseract_fallback(arquivo_bytes, None)
+            except Exception as ocr_err:
+                return Response({
+                    'success': True,
+                    'texto': '',
+                    'mensagem': 'PDF sem texto extraível (pode ser escaneado).',
+                    'total_paginas': total_paginas,
+                    'tamanho': len(arquivo_bytes),
+                    'nome_arquivo': arquivo.name,
+                })
         
         return Response({
             'success': True,
-            'progress_data': progress_data
+            'texto': texto_final,
+            'total_paginas': total_paginas,
+            'tamanho': len(arquivo_bytes),
+            'nome_arquivo': arquivo.name,
+            'mensagem': f'Texto extraído com sucesso! {total_paginas} página(s) processada(s).'
         })
         
     except Exception as e:
-        return Response({
-            'error': str(e)
-        }, status=500)
+        print(f"❌ Erro ao extrair texto: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response(
+            {'error': f'Erro ao processar PDF: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 # ========================================
