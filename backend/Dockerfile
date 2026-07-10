@@ -37,7 +37,7 @@ RUN tesseract --version && \
     echo "✅ Tesseract instalado com suporte a português"
 
 # Copiar requirements
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Instalar dependências Python (sem torch/easyocr para economizar memória)
 # pypdf já está no requirements.txt e é suficiente para PDFs digitais
@@ -45,7 +45,7 @@ RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # Copiar código da aplicação
-COPY . .
+COPY backend/ ./
 
 # Criar diretórios para arquivos estáticos e media
 RUN mkdir -p /app/staticfiles /app/media
@@ -57,7 +57,7 @@ RUN mkdir -p /app/staticfiles /app/media
 EXPOSE 8000
 
 # Script de entrada (entrypoint)
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY backend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN sed -i 's/\r$//g' /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 

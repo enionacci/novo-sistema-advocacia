@@ -10,17 +10,17 @@ LABEL description="Frontend React - Build Stage"
 WORKDIR /app
 
 # Copiar arquivos de dependências
-COPY package*.json ./
+COPY frontend/package*.json ./
 
 # Instalar dependências
 RUN npm install
 
 # Copiar código da aplicação
-COPY . .
+COPY frontend/ ./
 
 # Copiar variáveis de ambiente de produção
 # O React (CRA) incorpora REACT_APP_* no bundle em tempo de build
-COPY .env.production .env
+COPY frontend/.env.production .env
 
 # Build da aplicação para produção
 RUN npm run build
@@ -35,7 +35,7 @@ LABEL description="Frontend React - Production"
 COPY --from=builder /app/build /usr/share/nginx/html
 
 # Copiar configuração do nginx
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expor porta 80
 EXPOSE 80
