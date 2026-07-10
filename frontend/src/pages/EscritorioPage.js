@@ -263,10 +263,10 @@ function EscritorioPage() {
                         <input type="file" hidden accept="image/*" onChange={(e) => setLogoFile(e.target.files[0])} />
                     </Button>
                     {logoFile && <Typography variant="body2">{logoFile.name}</Typography>}
-                    {escritorio.logo && (
+                    {escritorio.logo_url && (
                         <Box sx={{ mt: 2, mb: 2 }}>
                             <Typography variant="subtitle1">Logotipo Atual:</Typography>
-                            <img src={escritorio.logo} alt="Logotipo" style={{ maxWidth: '200px', marginTop: '10px' }} />
+                            <img src={escritorio.logo_url} alt="Logotipo" style={{ maxWidth: '200px', marginTop: '10px' }} />
                         </Box>
                     )}
 

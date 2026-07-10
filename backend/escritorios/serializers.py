@@ -103,19 +103,21 @@ class EscritorioSerializer(serializers.ModelSerializer):
     membros = PerfilUsuarioSerializer(many=True, read_only=True)
     # Campo para receber a chave de API, mas nunca enviá-la de volta.
     openai_api_key = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    # Campo logo com URL completa
-    logo = serializers.SerializerMethodField()
+    # Campo logo com URL completa (leitura)
+    logo_url = serializers.SerializerMethodField()
+    # Campo para receber o upload do logo (escrita)
+    logo = serializers.ImageField(write_only=True, required=False)
 
     class Meta:
         model = Escritorio
         fields = [
             'id', 'nome', 'data_criacao', 'membros', 'openai_api_key',
             'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep',
-            'logo'
+            'logo', 'logo_url'
         ]
         read_only_fields = ['data_criacao', 'membros']
 
-    def get_logo(self, obj):
+    def get_logo_url(self, obj):
         """Retorna a URL completa do logo se existir."""
         if obj.logo:
             request = self.context.get('request')
@@ -123,3 +125,13 @@ class EscritorioSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.logo.url)
             return obj.logo.url
         return None
+
+    def update(self, instance, validated_data):
+        """Trata o upload do logo separadamente."""
+        logo_file = validated_data.pop('logo', None)
+        if logo_file:
+            # Remove logo antigo se existir
+            if instance.logo:
+                instance.logo.delete(save=False)
+            instance.logo = logo_file
+        return super().update(instance, validated_data)

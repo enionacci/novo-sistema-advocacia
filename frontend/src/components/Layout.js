@@ -375,9 +375,9 @@ const Layout = ({ children }) => {
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {escritorio?.logo && (
+              {escritorio?.logo_url && (
                 <img
-                  src={escritorio.logo}
+                  src={escritorio.logo_url}
                   alt="Logo"
                   style={{ height: 35, width: 'auto' }}
                 />
