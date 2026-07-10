@@ -399,10 +399,10 @@ class OCRService:
     
     def extract_text_from_image_hybrid(self, arquivo_bytes: bytes) -> str:
         """Extrai texto de imagem usando Tesseract"""
-        return self.extract_text_from_image_tesseract(arquivo_bytes)
+        try:
+            return self.extract_text_from_image_tesseract(arquivo_bytes)
         except Exception as e:
-            error_message = f"Erro no OCR EasyOCR do PDF: {str(e)}"
-            progress_tracker.complete_progress(task_id, False, error_message)
+            error_message = f"Erro no OCR da imagem: {str(e)}"
             raise Exception(error_message)
     
     @staticmethod
