@@ -4,6 +4,7 @@ Views para Scanner & Análise com IA
 
 from rest_framework import generics, status, views
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.http import JsonResponse
 from django.db import transaction
@@ -27,8 +28,7 @@ class DocumentoOCRAsyncView(views.APIView):
     View para processar OCR assíncrono com rastreamento de progresso
     POST: Inicia processamento OCR e retorna task_id para acompanhamento
     """
-    permission_classes = [HasPermission]
-    required_permission = 'escanear_documento'
+    permission_classes = [IsAuthenticated]
     
     def post(self, request):
         """

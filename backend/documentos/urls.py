@@ -5,7 +5,9 @@ from .views import salvar_documento_scanner, extrair_texto_pdf
 from .ai_views import (
     DocumentoAnaliseIAListCreateView,
     DocumentoAnaliseIADetailView,
-    DocumentoAnaliseIAReprocessView
+    DocumentoAnaliseIAReprocessView,
+    DocumentoOCRAsyncView,
+    DocumentoOCRProgressView
 )
 from .anonymization_views import (
     anonymize_document,
@@ -27,7 +29,11 @@ router.register(r'tags', TagViewSet, basename='tag')
 router.register(r'', DocumentoViewSet, basename='documento')
 
 urlpatterns = [
-    # ✅ NOVO ENDPOINT SIMPLES - Extração de texto com pypdf (instantâneo)
+    # ✅ OCR ASSÍNCRONO - Para PDFs grandes/escaneados (processa em background)
+    path('ocr-async/', DocumentoOCRAsyncView.as_view(), name='documento-ocr-async'),
+    path('ocr-progress/<str:task_id>/', DocumentoOCRProgressView.as_view(), name='documento-ocr-progress'),
+
+    # ✅ EXTRAÇÃO DE TEXTO SIMPLES - Para PDFs digitais (instantâneo)
     path('extrair-texto/', extrair_texto_pdf, name='documento-extrair-texto'),
     
     # Análises com IA

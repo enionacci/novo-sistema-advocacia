@@ -340,27 +340,28 @@ class OCRService:
     
     def extract_text_from_image_tesseract(self, arquivo_bytes: bytes) -> str:
         """
-        Extrai texto usando Tesseract otimizado (execução única para velocidade)
+        Extrai texto usando Tesseract com 2 configurações (rápido + fallback)
         """
         try:
             image = Image.open(io.BytesIO(arquivo_bytes))
             
-            # Configuração única otimizada - executa apenas 1 vez para ser rápido
-            config = '--psm 3 -c tessedit_ocr_engine_mode=1'
-            
+            # Tenta primeiro com PSM 6 (bloco uniforme) - melhor para documentos
             resultado = pytesseract.image_to_string(
                 image,
                 lang='por',
-                config=config
+                config='--psm 6'
             )
             
-            if not resultado or len(resultado.strip()) < 10:
-                # Fallback rápido com configuração alternativa
-                resultado = pytesseract.image_to_string(
+            # Se resultado for muito curto, tenta PSM 3 (automático)
+            if not resultado or len(resultado.strip()) < 20:
+                resultado2 = pytesseract.image_to_string(
                     image,
                     lang='por',
-                    config='--psm 6'
+                    config='--psm 3'
                 )
+                # Usa o resultado com mais caracteres
+                if resultado2 and len(resultado2.strip()) > len(resultado.strip()):
+                    resultado = resultado2
             
             # APLICA RECONSTRUÇÃO INTELIGENTE
             texto_final = smart_text_reconstruction(resultado)

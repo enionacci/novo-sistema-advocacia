@@ -83,7 +83,7 @@ const ScannerPage = () => {
   };
 
   // ===================================
-  // EXTRAÇÃO DE TEXTO - SIMPLES E DIRETA
+  // EXTRAÇÃO DE TEXTO - ASSÍNCRONA COM POLLING
   // ===================================
 
   const handleExtrairTexto = async () => {
@@ -103,30 +103,105 @@ const ScannerPage = () => {
       const formData = new FormData();
       formData.append('arquivo', arquivo);
 
-      const response = await axios.post('/api/documentos/extrair-texto/', formData, {
+      // Tenta primeiro extração rápida (pypdf - para PDFs digitais)
+      try {
+        const response = await axios.post('/api/documentos/extrair-texto/', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 15000 // 15s timeout (pypdf é instantâneo)
+        });
+
+        if (response.data.success) {
+          const texto = response.data.texto || '';
+          setTextoExtraido(texto);
+
+          if (texto.trim()) {
+            setSuccess(response.data.mensagem || 'Texto extraído com sucesso!');
+            generateAutoTitle();
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (fastError) {
+        console.log('Extração rápida falhou, tentando OCR assíncrono:', fastError.message);
+      }
+
+      // Se extração rápida falhou ou não retornou texto, usa OCR assíncrono
+      setSuccess('Iniciando OCR em background. Aguarde...');
+
+      // 1. Envia o arquivo para processamento assíncrono
+      const asyncResponse = await axios.post('/api/documentos/ocr-async/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 30000 // 30s timeout (pypdf é instantâneo)
+        timeout: 30000
       });
 
-      if (response.data.success) {
-        const texto = response.data.texto || '';
-        setTextoExtraido(texto);
-
-        if (texto.trim()) {
-          setSuccess(response.data.mensagem || 'Texto extraído com sucesso!');
-          generateAutoTitle();
-        } else {
-          setError('Nenhum texto encontrado no PDF. O documento pode ser escaneado (imagem).');
-        }
-      } else {
-        setError(response.data.error || 'Erro ao extrair texto.');
+      if (!asyncResponse.data.success) {
+        setError(asyncResponse.data.error || 'Erro ao iniciar OCR.');
+        setLoading(false);
+        return;
       }
+
+      const taskId = asyncResponse.data.task_id;
+      console.log('📋 OCR Task ID:', taskId);
+
+      // 2. Polling: consulta o progresso a cada 2 segundos
+      const pollInterval = setInterval(async () => {
+        try {
+          const progressResponse = await axios.get(`/api/documentos/ocr-progress/${taskId}/`, {
+            timeout: 10000
+          });
+
+          const data = progressResponse.data;
+          console.log(`📊 Progresso: ${data.percentage}% - ${data.status}`);
+
+          if (data.status === 'concluido' && data.resultado) {
+            clearInterval(pollInterval);
+            const texto = data.resultado.texto || '';
+            setTextoExtraido(texto);
+
+            if (texto.trim()) {
+              setSuccess('OCR concluído com sucesso!');
+              generateAutoTitle();
+            } else {
+              setError('OCR não encontrou texto no documento.');
+            }
+            setLoading(false);
+
+          } else if (data.status === 'erro') {
+            clearInterval(pollInterval);
+            setError(data.message || 'Erro no processamento OCR.');
+            setLoading(false);
+
+          } else if (data.status === 'not_found') {
+            clearInterval(pollInterval);
+            setError('Tarefa expirou. Tente novamente.');
+            setLoading(false);
+          }
+
+          // Atualiza mensagem de progresso
+          if (data.status === 'processando' || data.status === 'iniciando') {
+            setSuccess(`Processando OCR: ${Math.round(data.percentage)}% - ${data.message}`);
+          }
+
+        } catch (pollError) {
+          console.error('Erro no polling:', pollError);
+          // Não para o polling em caso de erro temporário
+        }
+      }, 2000);
+
+      // Timeout de segurança: para o polling após 10 minutos
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (loading) {
+          setError('Tempo limite excedido. O processamento pode estar demorando mais que o esperado.');
+          setLoading(false);
+        }
+      }, 600000);
+
     } catch (err) {
       const errorMsg = err.response?.data?.error ||
                        (err.code === 'ECONNABORTED' ? 'Tempo limite excedido.' : 'Erro ao processar o PDF.');
       setError(errorMsg);
       console.error('Erro na extração:', err);
-    } finally {
       setLoading(false);
     }
   };
