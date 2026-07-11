@@ -518,13 +518,12 @@ def merge_pdfs(request):
 @pdf_tool_required
 def split_pdf(request):
     """
-    Divide um PDF em múltiplos arquivos.
-    """
+    Divide um PDF em multiplos arquivos.
 
     POST /api/documentos/pdf/split/
 
-    Recebe: arquivo PDF + JSON com intervalos de páginas
-    Exemplo: {"intervalos": [{"inicio": 1, "fim": 3}, {"inicio": 4, "fim": 5}]}
+    Recebe: arquivo PDF + JSON com intervalos de paginas
+    Exemplo: intervalos como [{"inicio": 1, "fim": 3}, {"inicio": 4, "fim": 5}]
     Retorna: ZIP com os PDFs divididos
     """
     try:
