@@ -28,6 +28,7 @@ import ScannerPage from './pages/ScannerPage';
 import AnalysesPage from './pages/AnalysesPage';
 import AnonymizePage from './pages/AnonymizePage';
 import AIAnalysisPage from './pages/AIAnalysisPage';
+import FerramentasPDFPage from './pages/FerramentasPDFPage';
 import ProcessosListPage from './pages/ProcessosListPage';
 import ProcessoCreatePage from './pages/ProcessoCreatePage';
 import ProcessoDetailPage from './pages/ProcessoDetailPage';
@@ -172,13 +173,21 @@ function App() {
                       </PrivateRoute>
                     } 
                   />
-                  <Route 
-                    path="/processos" 
+                  <Route
+                    path="/ferramentas-pdf"
+                    element={
+                      <PrivateRoute>
+                        <FerramentasPDFPage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/processos"
                     element={
                       <PrivateRoute>
                         <ProcessosListPage />
                       </PrivateRoute>
-                    } 
+                    }
                   />
                   <Route 
                     path="/processos/novo" 

@@ -438,8 +438,214 @@ def salvar_documento_scanner(request):
         # Log detalhado do erro
         print("❌ ERRO AO SALVAR DOCUMENTO SCANNER:")
         print(traceback.format_exc())
-        
+
         return JsonResponse({
             'error': f'Erro interno do servidor: {str(e)}',
             'type': type(e).__name__
         }, status=500)
+
+
+# ========================================
+# FERRAMENTAS DE PDF
+# ========================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def merge_pdfs(request):
+    """
+    Junta múltiplos PDFs em um único arquivo.
+
+    POST /api/documentos/pdf/merge/
+
+    Recebe múltiplos arquivos PDF via multipart/form-data.
+    Retorna o PDF mesclado para download.
+    """
+    try:
+        files = request.FILES.getlist('arquivos')
+        if len(files) < 2:
+            return Response(
+                {'error': 'Envie pelo menos 2 arquivos PDF.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Valida extensões
+        for f in files:
+            if not f.name.lower().endswith('.pdf'):
+                return Response(
+                    {'error': f'O arquivo "{f.name}" não é um PDF.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        from .pdf_tools import merge_pdfs as merge_tool
+        arquivos_bytes = [f.read() for f in files]
+        pdf_resultado = merge_tool(arquivos_bytes)
+
+        response = HttpResponse(pdf_resultado, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="pdf_merged.pdf"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao juntar PDFs: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response(
+            {'error': f'Erro ao juntar PDFs: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def split_pdf(request):
+    """
+    Divide um PDF em múltiplos arquivos.
+
+    POST /api/documentos/pdf/split/
+
+    Recebe: arquivo PDF + JSON com intervalos de páginas
+    Exemplo: {"intervalos": [{"inicio": 1, "fim": 3}, {"inicio": 4, "fim": 5}]}
+    Retorna: ZIP com os PDFs divididos
+    """
+    try:
+        if 'arquivo' not in request.FILES:
+            return Response(
+                {'error': 'Nenhum arquivo enviado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        arquivo = request.FILES['arquivo']
+        if not arquivo.name.lower().endswith('.pdf'):
+            return Response(
+                {'error': 'O arquivo deve ser um PDF.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        import json
+        try:
+            data = json.loads(request.data.get('data', '{}'))
+            intervalos = data.get('intervalos', [])
+        except (json.JSONDecodeError, TypeError):
+            return Response(
+                {'error': 'Formato de dados inválido.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not intervalos:
+            return Response(
+                {'error': 'Nenhum intervalo de páginas fornecido.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from .pdf_tools import split_pdf_to_zip
+        pdf_bytes = arquivo.read()
+        page_ranges = [(r['inicio'], r['fim']) for r in intervalos]
+        nomes = [r.get('nome', f'parte_{i+1}.pdf') for i, r in enumerate(intervalos)]
+
+        zip_resultado = split_pdf_to_zip(pdf_bytes, page_ranges, nomes)
+
+        response = HttpResponse(zip_resultado, content_type='application/zip')
+        response['Content-Disposition'] = 'attachment; filename="pdf_split.zip"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao dividir PDF: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response(
+            {'error': f'Erro ao dividir PDF: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def compress_pdf(request):
+    """
+    Compacta um PDF reduzindo o tamanho.
+
+    POST /api/documentos/pdf/compress/
+
+    Recebe: arquivo PDF + qualidade (low/medium/high)
+    Retorna: PDF compactado para download
+    """
+    try:
+        if 'arquivo' not in request.FILES:
+            return Response(
+                {'error': 'Nenhum arquivo enviado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        arquivo = request.FILES['arquivo']
+        if not arquivo.name.lower().endswith('.pdf'):
+            return Response(
+                {'error': 'O arquivo deve ser um PDF.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        quality = request.data.get('quality', 'medium')
+        if quality not in ('low', 'medium', 'high'):
+            quality = 'medium'
+
+        from .pdf_tools import compress_pdf as compress_tool
+        pdf_bytes = arquivo.read()
+        pdf_resultado = compress_tool(pdf_bytes, quality)
+
+        response = HttpResponse(pdf_resultado, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="pdf_compactado.pdf"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao compactar PDF: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response(
+            {'error': f'Erro ao compactar PDF: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def convert_images_to_pdf(request):
+    """
+    Converte imagens em um PDF.
+
+    POST /api/documentos/pdf/convert-image/
+
+    Recebe: uma ou mais imagens (jpg, png, etc.)
+    Retorna: PDF gerado para download
+    """
+    try:
+        files = request.FILES.getlist('imagens')
+        if not files:
+            return Response(
+                {'error': 'Nenhuma imagem enviada.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Valida extensões
+        ext_validas = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp')
+        for f in files:
+            ext = os.path.splitext(f.name.lower())[1]
+            if ext not in ext_validas:
+                return Response(
+                    {'error': f'O arquivo "{f.name}" não é uma imagem suportada.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        from .pdf_tools import images_to_pdf
+        imagens_bytes = [f.read() for f in files]
+        pdf_resultado = images_to_pdf(imagens_bytes)
+
+        response = HttpResponse(pdf_resultado, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="imagens_convertidas.pdf"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao converter imagens: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response(
+            {'error': f'Erro ao converter imagens: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

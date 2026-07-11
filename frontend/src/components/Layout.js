@@ -55,6 +55,7 @@ import {
   Psychology as AIIcon,
   Security as SecurityIcon,
   Gavel as GavelIcon,
+  Build as BuildIcon,
 } from '@mui/icons-material';
 
 const drawerWidth = 260;
@@ -180,6 +181,13 @@ const Layout = ({ children }) => {
           icon: <AIIcon />,
           path: '/analise-ia',
           permission: 'analisar_arquivo_ia',
+        },
+        {
+          id: 'ferramentas-pdf',
+          label: 'Ferramentas PDF',
+          icon: <BuildIcon />,
+          path: '/ferramentas-pdf',
+          permission: 'ver_arquivos',
         },
         {
           id: 'documentos-listar',

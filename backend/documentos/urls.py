@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import CategoriaViewSet, TagViewSet, DocumentoViewSet
 from .views import salvar_documento_scanner, extrair_texto_pdf
+from .views import merge_pdfs, split_pdf, compress_pdf, convert_images_to_pdf
 from .ai_views import (
     DocumentoAnaliseIAListCreateView,
     DocumentoAnaliseIADetailView,
@@ -56,6 +57,12 @@ urlpatterns = [
     
     # Scanner básico (salvar documento digitalizado)
     path('salvar-scanner/', salvar_documento_scanner, name='salvar-documento-scanner'),
+    
+    # Ferramentas de PDF
+    path('pdf/merge/', merge_pdfs, name='pdf-merge'),
+    path('pdf/split/', split_pdf, name='pdf-split'),
+    path('pdf/compress/', compress_pdf, name='pdf-compress'),
+    path('pdf/convert-image/', convert_images_to_pdf, name='pdf-convert-image'),
     
     # ViewSets (deve vir por último)
     path('', include(router.urls)),
