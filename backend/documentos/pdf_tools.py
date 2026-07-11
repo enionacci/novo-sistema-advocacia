@@ -271,8 +271,7 @@ def rotate_pdf_pages(pdf_bytes: bytes, rotation: int = 90, pages: List[int] = No
 
 def pdf_to_docx(pdf_bytes: bytes) -> bytes:
     """
-    Converte um PDF para formato DOCX (Word).
-    Usa extração de texto + python-docx para criar o documento.
+    Converte um PDF para formato DOCX (Word) preservando formatação básica.
 
     Args:
         pdf_bytes: Bytes do PDF original
@@ -282,11 +281,19 @@ def pdf_to_docx(pdf_bytes: bytes) -> bytes:
     """
     try:
         from docx import Document
-        from docx.shared import Pt, Inches
+        from docx.shared import Pt, Inches, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
         import fitz
 
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         word_doc = Document()
+
+        # Configura margens
+        for section in word_doc.sections:
+            section.top_margin = Inches(1)
+            section.bottom_margin = Inches(1)
+            section.left_margin = Inches(1)
+            section.right_margin = Inches(1)
 
         # Configura fonte padrão
         style = word_doc.styles['Normal']
@@ -296,15 +303,47 @@ def pdf_to_docx(pdf_bytes: bytes) -> bytes:
 
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
-            text = page.get_text().strip()
 
-            if text:
-                # Adiciona título da página
-                word_doc.add_heading(f'Página {page_num + 1}', level=2)
-                # Adiciona o texto
-                for paragraph in text.split('\n'):
-                    if paragraph.strip():
-                        word_doc.add_paragraph(paragraph.strip())
+            # Extrai texto com blocos (preserva posicionamento)
+            blocks = page.get_text("dict")["blocks"]
+
+            for block in blocks:
+                if block["type"] == 0:  # Bloco de texto
+                    for line in block["lines"]:
+                        paragraph = word_doc.add_paragraph()
+                        paragraph.paragraph_format.space_after = Pt(2)
+                        paragraph.paragraph_format.space_before = Pt(2)
+
+                        for span in line["spans"]:
+                            text = span["text"].strip()
+                            if not text:
+                                continue
+
+                            run = paragraph.add_run(text)
+                            run.font.size = Pt(max(span["size"] * 0.6, 8))  # Ajusta tamanho
+
+                            # Preserva negrito
+                            if span["flags"] & 2:  # Bold flag
+                                run.bold = True
+
+                            # Preserva itálico
+                            if span["flags"] & 1:  # Italic flag
+                                run.italic = True
+
+                            # Preserva cor (se não for preto)
+                            if span["color"] and span["color"] != 0:
+                                r = (span["color"] >> 16) & 0xFF
+                                g = (span["color"] >> 8) & 0xFF
+                                b = span["color"] & 0xFF
+                                if not (r == 0 and g == 0 and b == 0):
+                                    run.font.color.rgb = RGBColor(r, g, b)
+
+                            # Fonte
+                            if span["font"]:
+                                try:
+                                    run.font.name = span["font"]
+                                except:
+                                    pass
 
             # Adiciona quebra de página entre páginas
             if page_num < len(doc) - 1:
@@ -312,37 +351,18 @@ def pdf_to_docx(pdf_bytes: bytes) -> bytes:
 
         doc.close()
 
+        # Remove o primeiro parágrafo vazio se existir
+        if word_doc.paragraphs and not word_doc.paragraphs[0].text.strip():
+            p = word_doc.paragraphs[0]._element
+            p.getparent().remove(p)
+
         # Salva para bytes
         output = io.BytesIO()
         word_doc.save(output)
         return output.getvalue()
 
     except ImportError:
-        # Fallback: tenta pdf2docx se disponível
-        try:
-            from pdf2docx import Converter
-            import tempfile
-
-            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_pdf:
-                tmp_pdf.write(pdf_bytes)
-                pdf_path = tmp_pdf.name
-
-            docx_path = pdf_path.replace('.pdf', '.docx')
-            cv = Converter(pdf_path)
-            cv.convert(docx_path, start=0, end=None)
-            cv.close()
-
-            with open(docx_path, 'rb') as f:
-                docx_bytes = f.read()
-
-            os.unlink(pdf_path)
-            os.unlink(docx_path)
-            return docx_bytes
-
-        except ImportError:
-            raise Exception("Nem python-docx nem pdf2docx estão instalados. Adicione um ao requirements.txt.")
-        except Exception as e2:
-            raise Exception(f"Erro ao converter PDF para Word: {str(e2)}")
+        raise Exception("python-docx não está instalado. Adicione ao requirements.txt.")
     except Exception as e:
         raise Exception(f"Erro ao converter PDF para Word: {str(e)}")
 
