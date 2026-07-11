@@ -311,6 +311,12 @@ class PermissionsRegistry:
             categoria='Arquivos',
             descricao='Permite remover análises de IA de arquivos'
         ),
+        PermissionDefinition(
+            codename='usar_ferramentas_pdf',
+            nome='Usar Ferramentas de PDF',
+            categoria='Arquivos',
+            descricao='Permite usar ferramentas de manipulação de PDF (juntar, dividir, compactar, converter, etc.)'
+        ),
     ]
     
     @classmethod
@@ -420,6 +426,7 @@ class PermissionsRegistry:
                 'ver_documento', 'criar_documento', 'editar_documento', 'deletar_documento', 'download_documento',
                 'ver_arquivos', 'criar_arquivo', 'editar_arquivo', 'deletar_arquivo', 'download_arquivo',
                 'escanear_arquivo', 'anonimizar_arquivo', 'analisar_arquivo_ia', 'deletar_analise_arquivo',
+                'usar_ferramentas_pdf',
                 'ver_relatorios',
             ],
             'Secretária': [
@@ -428,6 +435,7 @@ class PermissionsRegistry:
                 'ver_processo', 'criar_processo',
                 'ver_documento', 'criar_documento', 'editar_documento', 'download_documento',
                 'ver_arquivos', 'criar_arquivo', 'editar_arquivo', 'download_arquivo', 'escanear_arquivo',
+                'usar_ferramentas_pdf',
             ],
             'Assistente': [
                 'ver_cliente',

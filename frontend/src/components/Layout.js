@@ -187,7 +187,7 @@ const Layout = ({ children }) => {
           label: 'Ferramentas PDF',
           icon: <BuildIcon />,
           path: '/ferramentas-pdf',
-          permission: 'ver_arquivos',
+          permission: 'usar_ferramentas_pdf',
         },
         {
           id: 'documentos-listar',

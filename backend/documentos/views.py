@@ -450,16 +450,34 @@ def salvar_documento_scanner(request):
 # FERRAMENTAS DE PDF
 # ========================================
 
+def pdf_tool_required(view_func):
+    """Decorator que verifica permissão para usar ferramentas PDF."""
+    from functools import wraps
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return Response({'error': 'Não autenticado.'}, status=401)
+        if request.user.is_superuser:
+            return view_func(request, *args, **kwargs)
+        try:
+            if hasattr(request.user, 'perfil') and request.user.perfil:
+                tem_perm = request.user.perfil.papeis.filter(
+                    permissoes__codename='usar_ferramentas_pdf'
+                ).exists()
+                if tem_perm:
+                    return view_func(request, *args, **kwargs)
+        except Exception:
+            pass
+        return Response({'error': 'Permissão negada.'}, status=403)
+    return _wrapped_view
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def merge_pdfs(request):
     """
     Junta múltiplos PDFs em um único arquivo.
-
-    POST /api/documentos/pdf/merge/
-
-    Recebe múltiplos arquivos PDF via multipart/form-data.
-    Retorna o PDF mesclado para download.
     """
     try:
         files = request.FILES.getlist('arquivos')
@@ -497,9 +515,11 @@ def merge_pdfs(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def split_pdf(request):
     """
     Divide um PDF em múltiplos arquivos.
+    """
 
     POST /api/documentos/pdf/split/
 
@@ -560,6 +580,7 @@ def split_pdf(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def compress_pdf(request):
     """
     Compacta um PDF reduzindo o tamanho.
@@ -607,6 +628,7 @@ def compress_pdf(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def convert_images_to_pdf(request):
     """
     Converte imagens em um PDF.
@@ -654,6 +676,7 @@ def convert_images_to_pdf(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def pdf_to_images_view(request):
     """
     Converte cada página de um PDF em imagens PNG.
@@ -694,6 +717,7 @@ def pdf_to_images_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def extract_pdf_pages(request):
     """
     Extrai páginas específicas de um PDF.
@@ -738,6 +762,7 @@ def extract_pdf_pages(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def insert_blank_page_view(request):
     """
     Insere uma página em branco em um PDF.
@@ -775,6 +800,7 @@ def insert_blank_page_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def rotate_pdf_pages_view(request):
     """
     Rotaciona páginas de um PDF.
@@ -820,6 +846,7 @@ def rotate_pdf_pages_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def pdf_to_docx_view(request):
     """
     Converte um PDF para formato Word (DOCX).
@@ -851,6 +878,7 @@ def pdf_to_docx_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@pdf_tool_required
 def add_page_numbers_view(request):
     """
     Adiciona numeração de páginas a um PDF.
