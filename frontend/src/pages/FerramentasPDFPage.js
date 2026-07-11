@@ -20,7 +20,9 @@ import {
   PhotoLibrary as PhotoLibraryIcon,
   FileCopy as FileCopyIcon,
   PostAdd as PostAddIcon,
-  RotateRight as RotateIcon
+  RotateRight as RotateIcon,
+  Description as DescriptionIcon,
+  LooksOne as LooksOneIcon
 } from '@mui/icons-material';
 import axios from '../utils/axiosInstance';
 
@@ -991,14 +993,152 @@ const RotatePDF = () => {
 };
 
 // ============================================
+// FERRAMENTA 9: PDF PARA WORD
+// ============================================
+const PDFToDocx = () => {
+  const [arquivo, setArquivo] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFile = (files) => {
+    if (files.length > 0 && files[0].name.toLowerCase().endsWith('.pdf')) {
+      setArquivo(files[0]); setError('');
+    } else { setError('Selecione um arquivo PDF.'); }
+  };
+
+  const handleConvert = async () => {
+    if (!arquivo) { setError('Selecione um arquivo PDF.'); return; }
+    setLoading(true); setError('');
+    try {
+      const formData = new FormData();
+      formData.append('arquivo', arquivo);
+      const response = await axios.post('/api/documentos/pdf/to-docx/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        responseType: 'blob', timeout: 120000
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url; link.setAttribute('download', 'documento_convertido.docx');
+      document.body.appendChild(link); link.click(); link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) { setError(err.response?.data?.error || 'Erro ao converter.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Box>
+      {!arquivo ? (
+        <FileDropZone onFilesSelected={handleFile} accept=".pdf" multiple={false}
+          icon={<DescriptionIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />}
+          title="Arraste um PDF aqui" subtitle="Será convertido para Word (.docx)" />
+      ) : (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PdfIcon color="error" />
+            <Typography>{arquivo.name}</Typography>
+            <IconButton size="small" color="error" onClick={() => setArquivo(null)} sx={{ ml: 'auto' }}>
+              <DeleteIcon />
+            </IconButton>
+          </Box>
+        </Paper>
+      )}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Button variant="contained" fullWidth size="large" onClick={handleConvert}
+        disabled={!arquivo || loading}
+        startIcon={loading ? <CircularProgress size={20} /> : <DescriptionIcon />}>
+        {loading ? 'Convertendo...' : 'Converter PDF para Word'}
+      </Button>
+    </Box>
+  );
+};
+
+// ============================================
+// FERRAMENTA 10: NUMERAR PÁGINAS
+// ============================================
+const AddPageNumbers = () => {
+  const [arquivo, setArquivo] = useState(null);
+  const [position, setPosition] = useState('bottom');
+  const [startNumber, setStartNumber] = useState(1);
+  const [prefix, setPrefix] = useState('');
+  const [suffix, setSuffix] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFile = (files) => {
+    if (files.length > 0 && files[0].name.toLowerCase().endsWith('.pdf')) {
+      setArquivo(files[0]); setError('');
+    } else { setError('Selecione um arquivo PDF.'); }
+  };
+
+  const handleAddNumbers = async () => {
+    if (!arquivo) { setError('Selecione um arquivo PDF.'); return; }
+    setLoading(true); setError('');
+    try {
+      const formData = new FormData();
+      formData.append('arquivo', arquivo);
+      formData.append('position', position);
+      formData.append('start_number', startNumber);
+      formData.append('prefix', prefix);
+      formData.append('suffix', suffix);
+      const response = await axios.post('/api/documentos/pdf/add-numbers/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        responseType: 'blob', timeout: 60000
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url; link.setAttribute('download', 'pdf_numerado.pdf');
+      document.body.appendChild(link); link.click(); link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) { setError(err.response?.data?.error || 'Erro ao numerar.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Box>
+      {!arquivo ? (
+        <FileDropZone onFilesSelected={handleFile} accept=".pdf" multiple={false}
+          icon={<LooksOneIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />}
+          title="Arraste um PDF aqui" subtitle="Adicione numeração às páginas" />
+      ) : (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PdfIcon color="error" />
+            <Typography>{arquivo.name}</Typography>
+            <IconButton size="small" color="error" onClick={() => setArquivo(null)} sx={{ ml: 'auto' }}>
+              <DeleteIcon />
+            </IconButton>
+          </Box>
+        </Paper>
+      )}
+      <FormControl fullWidth sx={{ mb: 2 }}>
+        <InputLabel>Posição</InputLabel>
+        <Select value={position} label="Posição" onChange={(e) => setPosition(e.target.value)}>
+          <MenuItem value="bottom">Rodapé</MenuItem>
+          <MenuItem value="top">Cabeçalho</MenuItem>
+        </Select>
+      </FormControl>
+      <TextField fullWidth label="Número inicial" type="number" value={startNumber}
+        onChange={(e) => setStartNumber(parseInt(e.target.value) || 1)} sx={{ mb: 2 }}
+        inputProps={{ min: 1 }} />
+      <TextField fullWidth label="Prefixo (opcional)" placeholder="Ex: Página "
+        value={prefix} onChange={(e) => setPrefix(e.target.value)} sx={{ mb: 2 }} />
+      <TextField fullWidth label="Sufixo (opcional)" placeholder="Ex: /10"
+        value={suffix} onChange={(e) => setSuffix(e.target.value)} sx={{ mb: 2 }} />
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Button variant="contained" fullWidth size="large" onClick={handleAddNumbers}
+        disabled={!arquivo || loading}
+        startIcon={loading ? <CircularProgress size={20} /> : <LooksOneIcon />}>
+        {loading ? 'Numerando...' : 'Numerar Páginas'}
+      </Button>
+    </Box>
+  );
+};
+
+// ============================================
 // PÁGINA PRINCIPAL
 // ============================================
 const FerramentasPDFPage = () => {
   const [tab, setTab] = useState(0);
-
-  const handleTabChange = (event, newValue) => {
-    setTab(newValue);
-  };
 
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', p: 2 }}>
@@ -1006,7 +1146,7 @@ const FerramentasPDFPage = () => {
         Ferramentas de PDF
       </Typography>
 
-      {/* Grid de ferramentas em vez de tabs */}
+      {/* Grid de ferramentas */}
       <Grid container spacing={1} sx={{ mb: 3 }}>
         {[
           { icon: <MergeIcon />, label: 'Juntar', id: 0 },
@@ -1017,6 +1157,8 @@ const FerramentasPDFPage = () => {
           { icon: <FileCopyIcon />, label: 'Extrair', id: 5 },
           { icon: <PostAddIcon />, label: 'Inserir', id: 6 },
           { icon: <RotateIcon />, label: 'Rotacionar', id: 7 },
+          { icon: <DescriptionIcon />, label: 'PDF→Word', id: 8 },
+          { icon: <LooksOneIcon />, label: 'Numerar', id: 9 },
         ].map((item) => (
           <Grid item xs={3} sm={3} md={1.5} key={item.id}>
             <Paper
@@ -1049,6 +1191,8 @@ const FerramentasPDFPage = () => {
         {tab === 5 && <ExtractPages />}
         {tab === 6 && <InsertBlank />}
         {tab === 7 && <RotatePDF />}
+        {tab === 8 && <PDFToDocx />}
+        {tab === 9 && <AddPageNumbers />}
       </Paper>
     </Box>
   );

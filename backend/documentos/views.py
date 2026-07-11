@@ -816,3 +816,77 @@ def rotate_pdf_pages_view(request):
         import traceback
         print(traceback.format_exc())
         return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def pdf_to_docx_view(request):
+    """
+    Converte um PDF para formato Word (DOCX).
+
+    POST /api/documentos/pdf/to-docx/
+    """
+    try:
+        if 'arquivo' not in request.FILES:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        arquivo = request.FILES['arquivo']
+        if not arquivo.name.lower().endswith('.pdf'):
+            return Response({'error': 'O arquivo deve ser um PDF.'}, status=400)
+
+        from .pdf_tools import pdf_to_docx
+        pdf_bytes = arquivo.read()
+        docx_bytes = pdf_to_docx(pdf_bytes)
+
+        response = HttpResponse(docx_bytes, content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        response['Content-Disposition'] = 'attachment; filename="documento_convertido.docx"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao converter PDF para Word: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_page_numbers_view(request):
+    """
+    Adiciona numeração de páginas a um PDF.
+
+    POST /api/documentos/pdf/add-numbers/
+
+    Parâmetros:
+        arquivo: PDF
+        position: 'bottom' ou 'top' (padrão: bottom)
+        start_number: número inicial (padrão: 1)
+        prefix: texto antes do número (opcional)
+        suffix: texto depois do número (opcional)
+    """
+    try:
+        if 'arquivo' not in request.FILES:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        arquivo = request.FILES['arquivo']
+        if not arquivo.name.lower().endswith('.pdf'):
+            return Response({'error': 'O arquivo deve ser um PDF.'}, status=400)
+
+        position = request.data.get('position', 'bottom')
+        start_number = int(request.data.get('start_number', 1))
+        prefix = request.data.get('prefix', '')
+        suffix = request.data.get('suffix', '')
+
+        from .pdf_tools import add_page_numbers
+        pdf_bytes = arquivo.read()
+        pdf_resultado = add_page_numbers(pdf_bytes, position, start_number, prefix, suffix)
+
+        response = HttpResponse(pdf_resultado, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="pdf_numerado.pdf"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao numerar páginas: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response({'error': str(e)}, status=500)

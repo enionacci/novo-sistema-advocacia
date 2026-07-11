@@ -8,6 +8,7 @@ Ferramentas de manipulação de PDF
 Todas as funções usam bibliotecas já instaladas (pypdf, PyMuPDF, Pillow).
 """
 import io
+import os
 import zipfile
 from typing import List, Tuple
 from pypdf import PdfReader, PdfWriter
@@ -266,3 +267,110 @@ def rotate_pdf_pages(pdf_bytes: bytes, rotation: int = 90, pages: List[int] = No
     writer.write(output)
     writer.close()
     return output.getvalue()
+
+
+def pdf_to_docx(pdf_bytes: bytes) -> bytes:
+    """
+    Converte um PDF para formato DOCX (Word).
+
+    Args:
+        pdf_bytes: Bytes do PDF original
+
+    Returns:
+        Bytes do arquivo DOCX
+    """
+    try:
+        from pdf2docx import Converter
+        import tempfile
+
+        # Salva PDF temporário
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_pdf:
+            tmp_pdf.write(pdf_bytes)
+            pdf_path = tmp_pdf.name
+
+        # Converte para docx
+        docx_path = pdf_path.replace('.pdf', '.docx')
+        cv = Converter(pdf_path)
+        cv.convert(docx_path, start=0, end=None)
+        cv.close()
+
+        # Lê o resultado
+        with open(docx_path, 'rb') as f:
+            docx_bytes = f.read()
+
+        # Limpa arquivos temporários
+        os.unlink(pdf_path)
+        os.unlink(docx_path)
+
+        return docx_bytes
+
+    except ImportError:
+        raise Exception("pdf2docx não está instalado. Adicione ao requirements.txt e reinstale.")
+    except Exception as e:
+        raise Exception(f"Erro ao converter PDF para Word: {str(e)}")
+
+
+def add_page_numbers(
+    pdf_bytes: bytes,
+    position: str = 'bottom',
+    start_number: int = 1,
+    prefix: str = '',
+    suffix: str = ''
+) -> bytes:
+    """
+    Adiciona numeração de páginas a um PDF.
+
+    Args:
+        pdf_bytes: Bytes do PDF original
+        position: 'bottom' ou 'top'
+        start_number: Número inicial
+        prefix: Texto antes do número (ex: "Página ")
+        suffix: Texto depois do número (ex: " de 10")
+
+    Returns:
+        Bytes do PDF com numeração
+    """
+    try:
+        from reportlab.lib.units import mm
+        from reportlab.pdfgen import canvas
+        import fitz
+
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        total_pages = len(doc)
+
+        for page_num in range(total_pages):
+            page = doc[page_num]
+            rect = page.rect
+
+            # Cria overlay com o número da página
+            overlay_pdf = io.BytesIO()
+            c = canvas.Canvas(overlay_pdf, pagesize=(rect.width, rect.height))
+
+            # Define posição
+            if position == 'top':
+                y = rect.height - 20
+            else:
+                y = 20
+
+            # Desenha o número
+            text = f"{prefix}{start_number + page_num}{suffix}"
+            c.setFont("Helvetica", 9)
+            c.setFillColorRGB(0.4, 0.4, 0.4)
+            c.drawCentredString(rect.width / 2, y, text)
+            c.save()
+
+            # Aplica overlay na página
+            overlay_pdf.seek(0)
+            overlay = fitz.open(stream=overlay_pdf, filetype="pdf")
+            page.show_pdf_page(rect, overlay, 0)
+            overlay.close()
+
+        output = io.BytesIO()
+        doc.save(output, garbage=4, deflate=True)
+        doc.close()
+        return output.getvalue()
+
+    except ImportError:
+        raise Exception("reportlab não está instalado. Adicione ao requirements.txt e reinstale.")
+    except Exception as e:
+        raise Exception(f"Erro ao numerar páginas: {str(e)}")
