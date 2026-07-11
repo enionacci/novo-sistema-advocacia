@@ -256,7 +256,6 @@ def analyze_pdf_type_simple(arquivo_bytes: bytes) -> dict:
 def is_page_scanned(page) -> bool:
     """
     Verifica se uma página específica do PDF é escaneada (imagem) ou digital (texto).
-    Versão MAIS AGRESSIVA para detectar páginas escaneadas.
     
     Args:
         page: Objeto de página do fitz (PyMuPDF)
@@ -265,49 +264,65 @@ def is_page_scanned(page) -> bool:
         True se a página parece ser escaneada, False se for digital
     """
     try:
-        # 1. Verifica se há imagens na página
-        image_list = page.get_images()
-        has_images = len(image_list) > 0
-        
-        # 2. Extrai texto
+        # 1. Extrai texto
         text = page.get_text().strip()
         text_len = len(text)
+        
+        # 2. Verifica se há imagens na página
+        image_list = page.get_images()
+        has_images = len(image_list) > 0
         
         # 3. Verifica se o texto parece ser lixo (caracteres soltos)
         # Páginas escaneadas muitas vezes têm texto "fantasma" com caracteres especiais
         if text_len > 0:
             alpha_chars = sum(1 for c in text if c.isalpha())
             special_chars = sum(1 for c in text if not c.isalnum() and not c.isspace())
-            has_garbage_text = (text_len > 0 and special_chars / text_len > 0.3) or (text_len > 0 and alpha_chars / text_len < 0.3)
+            has_garbage_text = (special_chars / text_len > 0.3) or (alpha_chars / text_len < 0.3)
         else:
             has_garbage_text = False
         
-        # LÓGICA DE DECISÃO
-        # Se tem imagens E pouco texto → ESCANEADO
-        if has_images and text_len < 200:
+        # LÓGICA DE DECISÃO - Prioridade: texto significativo sempre vence
+        
+        # Se tem MUITO texto (> 500 chars) → DIGITAL (mesmo com imagens)
+        if text_len > 500:
+            return False
+        
+        # Se tem texto razoável (> 100 chars) E não tem imagens → DIGITAL
+        if text_len > 100 and not has_images:
+            return False
+        
+        # Se tem imagens E pouco ou nenhum texto → ESCANEADO
+        if has_images and text_len < 50:
             return True
         
         # Se tem imagens E texto parece lixo → ESCANEADO
         if has_images and has_garbage_text:
             return True
         
-        # Se NÃO tem imagens E tem texto suficiente → DIGITAL
-        if not has_images and text_len > 100:
+        # Se NÃO tem imagens E tem texto razoável → DIGITAL
+        if not has_images and text_len > 50:
             return False
         
-        # Se tem texto muito curto (< 30 chars) mesmo sem imagens → ESCANEADO
-        if text_len < 30:
-            return True
-        
-        # Se texto parece lixo → ESCANEADO
+        # Se texto parece lixo (mesmo sem imagens) → ESCANEADO
         if has_garbage_text:
             return True
         
-        # Se tem imagens e texto entre 30-100 chars → ESCANEADO (conservador)
+        # Se tem imagens e texto entre 50-100 chars → verifica qualidade do texto
         if has_images:
-            return True
+            # Se o texto tem palavras comuns em português, provavelmente é digital com logo
+            palavras_comuns = ['de', 'da', 'do', 'em', 'para', 'com', 'por', 'os', 'as', 'ao', 'dos', 'das', 'que', 'e', 'a', 'o']
+            palavras = text.lower().split()
+            palavras_reais = sum(1 for p in palavras if p in palavras_comuns or len(p) > 3)
+            if palavras_reais > 3:
+                return False  # Tem palavras reais → digital
+            return True  # Poucas palavras reais → escaneado
         
-        # Padrão: se tem texto razoável sem imagens, é digital
+        # Padrão: sem texto e sem imagens → verifica área
+        rect = page.rect
+        page_area = rect.width * rect.height
+        if page_area > 1000000:
+            return True  # Área grande → provavelmente imagem
+        
         return False
         
     except Exception as e:
