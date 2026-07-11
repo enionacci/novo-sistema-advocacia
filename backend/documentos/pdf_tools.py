@@ -307,6 +307,9 @@ def pdf_to_docx(pdf_bytes: bytes) -> bytes:
             # Extrai texto com blocos (preserva posicionamento)
             blocks = page.get_text("dict")["blocks"]
 
+            # Conjunto para rastrear textos já adicionados (evita duplicatas)
+            textos_adicionados = set()
+
             for block in blocks:
                 if block["type"] == 0:  # Bloco de texto
                     for line in block["lines"]:
@@ -318,6 +321,12 @@ def pdf_to_docx(pdf_bytes: bytes) -> bytes:
                             text = span["text"].strip()
                             if not text:
                                 continue
+
+                            # Evita texto duplicado (mesmo texto já adicionado nesta página)
+                            text_key = text.lower()[:50]
+                            if text_key in textos_adicionados:
+                                continue
+                            textos_adicionados.add(text_key)
 
                             run = paragraph.add_run(text)
                             run.font.size = Pt(max(span["size"] * 0.6, 8))  # Ajusta tamanho
