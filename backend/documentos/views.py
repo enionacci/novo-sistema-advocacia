@@ -285,23 +285,19 @@ class OCRProgressView(APIView):
 
 
 # ========================================
-# OCR SÍNCRONO SIMPLES - USANDO pypdf
+# OCR HÍBRIDO - Página por página (digital + escaneado)
 # ========================================
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def extrair_texto_pdf(request):
     """
-    Endpoint SIMPLES e DIRETO para extrair texto de PDFs.
-    Usa pypdf (já instalado) - NÃO precisa de EasyOCR, PyTorch, threads, etc.
+    Endpoint HÍBRIDO que extrai texto de PDFs página por página.
+    Para cada página, decide automaticamente entre:
+    - pypdf (instantâneo) para páginas digitais
+    - Tesseract OCR para páginas escaneadas
     
     POST /api/documentos/extrair-texto/
-    
-    Args:
-        arquivo: O arquivo PDF enviado via multipart/form-data
-    
-    Returns:
-        JSON com o texto extraído instantaneamente
     """
     try:
         if 'arquivo' not in request.FILES:
@@ -323,44 +319,17 @@ def extrair_texto_pdf(request):
         # Lê o arquivo para memória
         arquivo_bytes = arquivo.read()
         
-        # Extrai texto usando pypdf (INSTANTÂNEO para PDFs digitais)
-        from pypdf import PdfReader
-        import io
-        
-        reader = PdfReader(io.BytesIO(arquivo_bytes))
-        total_paginas = len(reader.pages)
-        texto_completo = []
-        
-        for i, pagina in enumerate(reader.pages):
-            texto = pagina.extract_text()
-            if texto and texto.strip():
-                texto_completo.append(f"--- Página {i + 1} ---\n{texto.strip()}")
-        
-        texto_final = "\n\n".join(texto_completo)
-        
-        if not texto_final.strip():
-            # Se não extraiu texto, tenta com Tesseract (fallback para PDF escaneado)
-            try:
-                print("⚠️ Nenhum texto extraído com pypdf. Tentando OCR Tesseract...")
-                from .ai_service import extract_text_tesseract_fallback
-                texto_final = extract_text_tesseract_fallback(arquivo_bytes, None)
-            except Exception as ocr_err:
-                return Response({
-                    'success': True,
-                    'texto': '',
-                    'mensagem': 'PDF sem texto extraível (pode ser escaneado).',
-                    'total_paginas': total_paginas,
-                    'tamanho': len(arquivo_bytes),
-                    'nome_arquivo': arquivo.name,
-                })
+        # Usa o método HÍBRIDO do OCRService
+        from .ai_service import OCRService
+        texto_final = OCRService.extract_text_from_pdf(arquivo_bytes)
         
         return Response({
             'success': True,
             'texto': texto_final,
-            'total_paginas': total_paginas,
+            'total_paginas': texto_final.count('--- Página'),
             'tamanho': len(arquivo_bytes),
             'nome_arquivo': arquivo.name,
-            'mensagem': f'Texto extraído com sucesso! {total_paginas} página(s) processada(s).'
+            'mensagem': 'Texto extraído com método híbrido (digital + OCR).'
         })
         
     except Exception as e:
