@@ -17,7 +17,11 @@ import {
   Download as DownloadIcon,
   ArrowUpward as ArrowUpIcon,
   ArrowDownward as ArrowDownIcon,
-  Add as AddIcon
+  Add as AddIcon,
+  PhotoLibrary as PhotoLibraryIcon,
+  FileCopy as FileCopyIcon,
+  PostAdd as PostAddIcon,
+  RotateRight as RotateIcon
 } from '@mui/icons-material';
 import axios from '../utils/axiosInstance';
 
@@ -638,6 +642,356 @@ const ImageToPDF = () => {
 };
 
 // ============================================
+// FERRAMENTA 5: PDF PARA IMAGEM
+// ============================================
+const PDFToImage = () => {
+  const [arquivo, setArquivo] = useState(null);
+  const [dpi, setDpi] = useState(200);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFile = (files) => {
+    if (files.length > 0 && files[0].name.toLowerCase().endsWith('.pdf')) {
+      setArquivo(files[0]);
+      setError('');
+    } else {
+      setError('Selecione um arquivo PDF.');
+    }
+  };
+
+  const handleConvert = async () => {
+    if (!arquivo) { setError('Selecione um arquivo PDF.'); return; }
+    setLoading(true); setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('arquivo', arquivo);
+      formData.append('dpi', dpi);
+
+      const response = await axios.post('/api/documentos/pdf/to-images/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        responseType: 'blob',
+        timeout: 120000
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'pdf_imagens.zip');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao converter.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box>
+      {!arquivo ? (
+        <FileDropZone onFilesSelected={handleFile} accept=".pdf" multiple={false}
+          icon={<PhotoLibraryIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />}
+          title="Arraste um PDF aqui" subtitle="Cada página virará uma imagem PNG" />
+      ) : (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PdfIcon color="error" />
+            <Typography>{arquivo.name}</Typography>
+            <IconButton size="small" color="error" onClick={() => setArquivo(null)} sx={{ ml: 'auto' }}>
+              <DeleteIcon />
+            </IconButton>
+          </Box>
+        </Paper>
+      )}
+      <FormControl fullWidth sx={{ mb: 2 }}>
+        <InputLabel>Resolução (DPI)</InputLabel>
+        <Select value={dpi} label="Resolução (DPI)" onChange={(e) => setDpi(e.target.value)}>
+          <MenuItem value={150}>150 DPI (rascunho)</MenuItem>
+          <MenuItem value={200}>200 DPI (recomendado)</MenuItem>
+          <MenuItem value={300}>300 DPI (alta qualidade)</MenuItem>
+        </Select>
+      </FormControl>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Button variant="contained" fullWidth size="large" onClick={handleConvert}
+        disabled={!arquivo || loading}
+        startIcon={loading ? <CircularProgress size={20} /> : <PhotoLibraryIcon />}>
+        {loading ? 'Convertendo...' : 'Converter PDF para Imagens'}
+      </Button>
+    </Box>
+  );
+};
+
+// ============================================
+// FERRAMENTA 6: EXTRAIR PÁGINAS
+// ============================================
+const ExtractPages = () => {
+  const [arquivo, setArquivo] = useState(null);
+  const [paginas, setPaginas] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFile = (files) => {
+    if (files.length > 0 && files[0].name.toLowerCase().endsWith('.pdf')) {
+      setArquivo(files[0]);
+      setError('');
+    } else {
+      setError('Selecione um arquivo PDF.');
+    }
+  };
+
+  const handleExtract = async () => {
+    if (!arquivo) { setError('Selecione um arquivo PDF.'); return; }
+
+    const paginasArray = paginas.split(',')
+      .map(p => parseInt(p.trim()))
+      .filter(p => !isNaN(p) && p > 0);
+
+    if (paginasArray.length === 0) {
+      setError('Digite números de página válidos (ex: 1, 3, 5).');
+      return;
+    }
+
+    setLoading(true); setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('arquivo', arquivo);
+      formData.append('data', JSON.stringify({ paginas: paginasArray }));
+
+      const response = await axios.post('/api/documentos/pdf/extract-pages/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        responseType: 'blob',
+        timeout: 60000
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'paginas_extraidas.pdf');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao extrair páginas.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box>
+      {!arquivo ? (
+        <FileDropZone onFilesSelected={handleFile} accept=".pdf" multiple={false}
+          icon={<FileCopyIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />}
+          title="Arraste um PDF aqui" subtitle="Depois escolha quais páginas extrair" />
+      ) : (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PdfIcon color="error" />
+            <Typography>{arquivo.name}</Typography>
+            <IconButton size="small" color="error" onClick={() => setArquivo(null)} sx={{ ml: 'auto' }}>
+              <DeleteIcon />
+            </IconButton>
+          </Box>
+        </Paper>
+      )}
+      <TextField
+        fullWidth label="Páginas para extrair" placeholder="Ex: 1, 3, 5-8, 10"
+        value={paginas} onChange={(e) => setPaginas(e.target.value)}
+        helperText="Separe por vírgulas. Use hífen para intervalos (ex: 1-5)"
+        sx={{ mb: 2 }}
+      />
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Button variant="contained" fullWidth size="large" onClick={handleExtract}
+        disabled={!arquivo || loading}
+        startIcon={loading ? <CircularProgress size={20} /> : <FileCopyIcon />}>
+        {loading ? 'Extraindo...' : 'Extrair Páginas'}
+      </Button>
+    </Box>
+  );
+};
+
+// ============================================
+// FERRAMENTA 7: INSERIR PÁGINA EM BRANCO
+// ============================================
+const InsertBlank = () => {
+  const [arquivo, setArquivo] = useState(null);
+  const [position, setPosition] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFile = (files) => {
+    if (files.length > 0 && files[0].name.toLowerCase().endsWith('.pdf')) {
+      setArquivo(files[0]);
+      setError('');
+    } else {
+      setError('Selecione um arquivo PDF.');
+    }
+  };
+
+  const handleInsert = async () => {
+    if (!arquivo) { setError('Selecione um arquivo PDF.'); return; }
+    setLoading(true); setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('arquivo', arquivo);
+      if (position) formData.append('position', position);
+
+      const response = await axios.post('/api/documentos/pdf/insert-blank/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        responseType: 'blob',
+        timeout: 60000
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'pdf_com_pagina_branca.pdf');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao inserir página.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box>
+      {!arquivo ? (
+        <FileDropZone onFilesSelected={handleFile} accept=".pdf" multiple={false}
+          icon={<PostAddIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />}
+          title="Arraste um PDF aqui" subtitle="Uma página em branco A4 será adicionada" />
+      ) : (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PdfIcon color="error" />
+            <Typography>{arquivo.name}</Typography>
+            <IconButton size="small" color="error" onClick={() => setArquivo(null)} sx={{ ml: 'auto' }}>
+              <DeleteIcon />
+            </IconButton>
+          </Box>
+        </Paper>
+      )}
+      <TextField
+        fullWidth label="Posição (opcional)" placeholder="Deixe em branco para inserir no final"
+        value={position} onChange={(e) => setPosition(e.target.value)}
+        helperText="Número da página onde inserir a página em branco"
+        sx={{ mb: 2 }}
+      />
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Button variant="contained" fullWidth size="large" onClick={handleInsert}
+        disabled={!arquivo || loading}
+        startIcon={loading ? <CircularProgress size={20} /> : <PostAddIcon />}>
+        {loading ? 'Inserindo...' : 'Inserir Página em Branco'}
+      </Button>
+    </Box>
+  );
+};
+
+// ============================================
+// FERRAMENTA 8: ROTACIONAR PÁGINAS
+// ============================================
+const RotatePDF = () => {
+  const [arquivo, setArquivo] = useState(null);
+  const [rotation, setRotation] = useState(90);
+  const [paginas, setPaginas] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFile = (files) => {
+    if (files.length > 0 && files[0].name.toLowerCase().endsWith('.pdf')) {
+      setArquivo(files[0]);
+      setError('');
+    } else {
+      setError('Selecione um arquivo PDF.');
+    }
+  };
+
+  const handleRotate = async () => {
+    if (!arquivo) { setError('Selecione um arquivo PDF.'); return; }
+    setLoading(true); setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('arquivo', arquivo);
+      formData.append('rotation', rotation);
+
+      if (paginas.trim()) {
+        const paginasArray = paginas.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p));
+        formData.append('data', JSON.stringify({ paginas: paginasArray }));
+      }
+
+      const response = await axios.post('/api/documentos/pdf/rotate/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        responseType: 'blob',
+        timeout: 60000
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'pdf_rotacionado.pdf');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao rotacionar.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box>
+      {!arquivo ? (
+        <FileDropZone onFilesSelected={handleFile} accept=".pdf" multiple={false}
+          icon={<RotateIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />}
+          title="Arraste um PDF aqui" subtitle="Rotacione páginas específicas ou todas" />
+      ) : (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PdfIcon color="error" />
+            <Typography>{arquivo.name}</Typography>
+            <IconButton size="small" color="error" onClick={() => setArquivo(null)} sx={{ ml: 'auto' }}>
+              <DeleteIcon />
+            </IconButton>
+          </Box>
+        </Paper>
+      )}
+      <FormControl fullWidth sx={{ mb: 2 }}>
+        <InputLabel>Rotação</InputLabel>
+        <Select value={rotation} label="Rotação" onChange={(e) => setRotation(e.target.value)}>
+          <MenuItem value={90}>90° (paisagem → retrato)</MenuItem>
+          <MenuItem value={180}>180° (inverter)</MenuItem>
+          <MenuItem value={270}>270° (retrato → paisagem)</MenuItem>
+        </Select>
+      </FormControl>
+      <TextField
+        fullWidth label="Páginas (opcional)" placeholder="Deixe em branco para rotacionar todas"
+        value={paginas} onChange={(e) => setPaginas(e.target.value)}
+        helperText="Ex: 1, 3, 5 (rotaciona apenas essas páginas)"
+        sx={{ mb: 2 }}
+      />
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Button variant="contained" fullWidth size="large" onClick={handleRotate}
+        disabled={!arquivo || loading}
+        startIcon={loading ? <CircularProgress size={20} /> : <RotateIcon />}>
+        {loading ? 'Rotacionando...' : 'Rotacionar PDF'}
+      </Button>
+    </Box>
+  );
+};
+
+// ============================================
 // PÁGINA PRINCIPAL
 // ============================================
 const FerramentasPDFPage = () => {
@@ -657,7 +1011,8 @@ const FerramentasPDFPage = () => {
         <Tabs
           value={tab}
           onChange={handleTabChange}
-          variant="fullWidth"
+          variant="scrollable"
+          scrollButtons="auto"
           indicatorColor="primary"
           textColor="primary"
         >
@@ -665,6 +1020,10 @@ const FerramentasPDFPage = () => {
           <Tab icon={<SplitIcon />} label="Dividir" />
           <Tab icon={<CompressIcon />} label="Compactar" />
           <Tab icon={<ImageIcon />} label="Imagem → PDF" />
+          <Tab icon={<PhotoLibraryIcon />} label="PDF → Imagem" />
+          <Tab icon={<FileCopyIcon />} label="Extrair Págs" />
+          <Tab icon={<PostAddIcon />} label="Inserir" />
+          <Tab icon={<RotateIcon />} label="Rotacionar" />
         </Tabs>
       </Paper>
 
@@ -673,6 +1032,10 @@ const FerramentasPDFPage = () => {
         {tab === 1 && <SplitPDF />}
         {tab === 2 && <CompressPDF />}
         {tab === 3 && <ImageToPDF />}
+        {tab === 4 && <PDFToImage />}
+        {tab === 5 && <ExtractPages />}
+        {tab === 6 && <InsertBlank />}
+        {tab === 7 && <RotatePDF />}
       </Paper>
     </Box>
   );

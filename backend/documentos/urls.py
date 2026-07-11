@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import CategoriaViewSet, TagViewSet, DocumentoViewSet
 from .views import salvar_documento_scanner, extrair_texto_pdf
 from .views import merge_pdfs, split_pdf, compress_pdf, convert_images_to_pdf
+from .views import pdf_to_images_view, extract_pdf_pages, insert_blank_page_view, rotate_pdf_pages_view
 from .ai_views import (
     DocumentoAnaliseIAListCreateView,
     DocumentoAnaliseIADetailView,
@@ -63,6 +64,10 @@ urlpatterns = [
     path('pdf/split/', split_pdf, name='pdf-split'),
     path('pdf/compress/', compress_pdf, name='pdf-compress'),
     path('pdf/convert-image/', convert_images_to_pdf, name='pdf-convert-image'),
+    path('pdf/to-images/', pdf_to_images_view, name='pdf-to-images'),
+    path('pdf/extract-pages/', extract_pdf_pages, name='pdf-extract-pages'),
+    path('pdf/insert-blank/', insert_blank_page_view, name='pdf-insert-blank'),
+    path('pdf/rotate/', rotate_pdf_pages_view, name='pdf-rotate'),
     
     # ViewSets (deve vir por último)
     path('', include(router.urls)),

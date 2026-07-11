@@ -24,6 +24,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.core.cache import cache
 import os
+import io
 import traceback
 import uuid
 
@@ -649,3 +650,169 @@ def convert_images_to_pdf(request):
             {'error': f'Erro ao converter imagens: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def pdf_to_images_view(request):
+    """
+    Converte cada página de um PDF em imagens PNG.
+    Retorna um ZIP com as imagens.
+
+    POST /api/documentos/pdf/to-images/
+    """
+    try:
+        if 'arquivo' not in request.FILES:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        arquivo = request.FILES['arquivo']
+        if not arquivo.name.lower().endswith('.pdf'):
+            return Response({'error': 'O arquivo deve ser um PDF.'}, status=400)
+
+        dpi = int(request.data.get('dpi', 200))
+
+        from .pdf_tools import pdf_to_images
+        pdf_bytes = arquivo.read()
+        imagens = pdf_to_images(pdf_bytes, dpi)
+
+        import zipfile
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for i, img_bytes in enumerate(imagens):
+                zf.writestr(f'pagina_{i+1}.png', img_bytes)
+
+        response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = 'attachment; filename="pdf_imagens.zip"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao converter PDF para imagens: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def extract_pdf_pages(request):
+    """
+    Extrai páginas específicas de um PDF.
+
+    POST /api/documentos/pdf/extract-pages/
+
+    Recebe: arquivo PDF + JSON com lista de páginas
+    Exemplo: {"paginas": [1, 3, 5]}
+    """
+    try:
+        if 'arquivo' not in request.FILES:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        arquivo = request.FILES['arquivo']
+        if not arquivo.name.lower().endswith('.pdf'):
+            return Response({'error': 'O arquivo deve ser um PDF.'}, status=400)
+
+        import json
+        try:
+            data = json.loads(request.data.get('data', '{}'))
+            paginas = data.get('paginas', [])
+        except (json.JSONDecodeError, TypeError):
+            return Response({'error': 'Formato de dados inválido.'}, status=400)
+
+        if not paginas:
+            return Response({'error': 'Nenhuma página fornecida.'}, status=400)
+
+        from .pdf_tools import extract_pages
+        pdf_bytes = arquivo.read()
+        pdf_resultado = extract_pages(pdf_bytes, paginas)
+
+        response = HttpResponse(pdf_resultado, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="paginas_extraidas.pdf"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao extrair páginas: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def insert_blank_page_view(request):
+    """
+    Insere uma página em branco em um PDF.
+
+    POST /api/documentos/pdf/insert-blank/
+
+    Recebe: arquivo PDF + posição opcional (padrão: final)
+    """
+    try:
+        if 'arquivo' not in request.FILES:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        arquivo = request.FILES['arquivo']
+        if not arquivo.name.lower().endswith('.pdf'):
+            return Response({'error': 'O arquivo deve ser um PDF.'}, status=400)
+
+        position = request.data.get('position')
+        if position:
+            position = int(position)
+
+        from .pdf_tools import insert_blank_page
+        pdf_bytes = arquivo.read()
+        pdf_resultado = insert_blank_page(pdf_bytes, position)
+
+        response = HttpResponse(pdf_resultado, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="pdf_com_pagina_branca.pdf"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao inserir página em branco: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def rotate_pdf_pages_view(request):
+    """
+    Rotaciona páginas de um PDF.
+
+    POST /api/documentos/pdf/rotate/
+
+    Recebe: arquivo PDF + rotação (90/180/270) + páginas opcionais
+    """
+    try:
+        if 'arquivo' not in request.FILES:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        arquivo = request.FILES['arquivo']
+        if not arquivo.name.lower().endswith('.pdf'):
+            return Response({'error': 'O arquivo deve ser um PDF.'}, status=400)
+
+        rotation = int(request.data.get('rotation', 90))
+        if rotation not in (90, 180, 270):
+            return Response({'error': 'Rotação deve ser 90, 180 ou 270.'}, status=400)
+
+        import json
+        paginas = None
+        try:
+            data = json.loads(request.data.get('data', '{}'))
+            paginas = data.get('paginas')
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        from .pdf_tools import rotate_pdf_pages
+        pdf_bytes = arquivo.read()
+        pdf_resultado = rotate_pdf_pages(pdf_bytes, rotation, paginas)
+
+        response = HttpResponse(pdf_resultado, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="pdf_rotacionado.pdf"'
+        return response
+
+    except Exception as e:
+        print(f"❌ Erro ao rotacionar PDF: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return Response({'error': str(e)}, status=500)
