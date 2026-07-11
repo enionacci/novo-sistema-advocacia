@@ -1,10 +1,9 @@
 import React, { useState, useRef } from 'react';
 import {
-  Box, Paper, Typography, Button, Tabs, Tab, Alert,
+  Box, Paper, Typography, Button, Alert,
   CircularProgress, List, ListItem, ListItemText,
   ListItemIcon, IconButton, Select, MenuItem, FormControl,
-  InputLabel, TextField, Chip, Grid, Divider, Card, CardContent,
-  LinearProgress
+  InputLabel, TextField, Grid
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -1007,25 +1006,39 @@ const FerramentasPDFPage = () => {
         Ferramentas de PDF
       </Typography>
 
-      <Paper sx={{ mb: 3 }}>
-        <Tabs
-          value={tab}
-          onChange={handleTabChange}
-          variant="scrollable"
-          scrollButtons="auto"
-          indicatorColor="primary"
-          textColor="primary"
-        >
-          <Tab icon={<MergeIcon />} label="Juntar" />
-          <Tab icon={<SplitIcon />} label="Dividir" />
-          <Tab icon={<CompressIcon />} label="Compactar" />
-          <Tab icon={<ImageIcon />} label="Imagem → PDF" />
-          <Tab icon={<PhotoLibraryIcon />} label="PDF → Imagem" />
-          <Tab icon={<FileCopyIcon />} label="Extrair Págs" />
-          <Tab icon={<PostAddIcon />} label="Inserir" />
-          <Tab icon={<RotateIcon />} label="Rotacionar" />
-        </Tabs>
-      </Paper>
+      {/* Grid de ferramentas em vez de tabs */}
+      <Grid container spacing={1} sx={{ mb: 3 }}>
+        {[
+          { icon: <MergeIcon />, label: 'Juntar', id: 0 },
+          { icon: <SplitIcon />, label: 'Dividir', id: 1 },
+          { icon: <CompressIcon />, label: 'Compactar', id: 2 },
+          { icon: <ImageIcon />, label: 'Imagem→PDF', id: 3 },
+          { icon: <PhotoLibraryIcon />, label: 'PDF→Imagem', id: 4 },
+          { icon: <FileCopyIcon />, label: 'Extrair', id: 5 },
+          { icon: <PostAddIcon />, label: 'Inserir', id: 6 },
+          { icon: <RotateIcon />, label: 'Rotacionar', id: 7 },
+        ].map((item) => (
+          <Grid item xs={3} sm={3} md={1.5} key={item.id}>
+            <Paper
+              onClick={() => setTab(item.id)}
+              sx={{
+                p: 1,
+                textAlign: 'center',
+                cursor: 'pointer',
+                bgcolor: tab === item.id ? 'primary.main' : 'background.paper',
+                color: tab === item.id ? 'white' : 'text.primary',
+                '&:hover': { bgcolor: tab === item.id ? 'primary.dark' : 'action.hover' },
+                transition: 'all 0.2s'
+              }}
+            >
+              <Box sx={{ fontSize: 28 }}>{item.icon}</Box>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                {item.label}
+              </Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
 
       <Paper sx={{ p: 3 }}>
         {tab === 0 && <MergePDF />}
