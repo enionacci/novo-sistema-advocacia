@@ -35,10 +35,12 @@ import { ptBR } from 'date-fns/locale';
 
 const TIPOS_ANALISE = [
   { value: 'resumo', label: 'Resumo Executivo', description: 'Resumo conciso do documento' },
-  { value: 'extracao_dados', label: 'Extração de Dados', description: 'Extrai informações estruturadas' },
+  { value: 'extracao_dados', label: 'Extração de Dados', description: 'Extrai informações estruturadas em JSON' },
   { value: 'juridico', label: 'Análise Jurídica', description: 'Análise sob perspectiva jurídica' },
   { value: 'contrato', label: 'Análise de Contrato', description: 'Cláusulas, riscos e obrigações' },
   { value: 'risco', label: 'Análise de Risco', description: 'Identifica riscos e alertas' },
+  { value: 'peticao', label: 'Análise de Petição', description: 'Analisa petições judiciais' },
+  { value: 'decisao', label: 'Análise de Decisão Judicial', description: 'Analisa sentenças e decisões' },
   { value: 'personalizado', label: 'Personalizado', description: 'Análise com prompt customizado' }
 ];
 

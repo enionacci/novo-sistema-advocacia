@@ -685,94 +685,161 @@ class AIAnalysisService:
     def get_prompt_template(self, tipo_analise: str) -> str:
         """
         Retorna o template de prompt para cada tipo de análise
-        
+
         Args:
             tipo_analise: Tipo da análise
-            
+
         Returns:
             Template do prompt
         """
         templates = {
             'resumo': """
-                Você é um assistente jurídico especializado. Analise o seguinte documento e forneça um resumo executivo detalhado.
+                Você é um assistente jurídico especializado em escritórios de advocacia brasileiros.
+                Analise o seguinte documento e forneça um resumo executivo detalhado em português brasileiro.
                 
                 O resumo deve conter:
-                - Tipo de documento
-                - Principais pontos e informações relevantes
-                - Partes envolvidas (se aplicável)
-                - Valores e datas importantes
-                - Conclusão/Síntese
+                - **Tipo de Documento**: Classificação do documento
+                - **Principais Pontos**: Informações mais relevantes
+                - **Partes Envolvidas**: Pessoas, empresas ou órgãos mencionados
+                - **Valores e Datas Importantes**: Montantes, vencimentos, prazos
+                - **Prazos e Urgências**: Datas de vencimento, prazos processuais, alertas de urgência
+                - **Recomendação de Ação**: O que o advogado deve fazer com este documento
+                - **Conclusão/Síntese**: Resumo final objetivo
                 
                 Documento:
                 {texto}
             """,
             
             'extracao_dados': """
-                Você é um assistente jurídico especializado em extração de dados. Analise o seguinte documento e extraia todas as informações estruturadas possíveis.
+                Você é um assistente jurídico especializado em extração de dados para escritórios de advocacia brasileiros.
+                Analise o seguinte documento e extraia todas as informações estruturadas possíveis em português brasileiro.
                 
-                Retorne um JSON com os seguintes campos (quando aplicável):
-                - tipo_documento
-                - numero_documento
-                - data_emissao
-                - data_vencimento
-                - partes: [lista de pessoas/empresas envolvidas]
-                - valores: [lista de valores monetários]
-                - enderecos: [lista de endereços]
-                - telefones: [lista de telefones]
-                - emails: [lista de emails]
-                - outras_informacoes_relevantes
+                Retorne APENAS UM JSON VÁLIDO, sem texto adicional, com os seguintes campos (quando aplicável):
+                {
+                    "tipo_documento": "tipo do documento",
+                    "numero_documento": "número do documento",
+                    "data_emissao": "data de emissão",
+                    "data_vencimento": "data de vencimento",
+                    "numero_processo": "número do processo judicial (se aplicável)",
+                    "comarca": "cidade/estado do tribunal",
+                    "vara": "vara judicial",
+                    "juiz": "nome do juiz",
+                    "partes": {
+                        "autor": ["nome do autor"],
+                        "reu": ["nome do réu"],
+                        "advogados": ["nomes dos advogados"]
+                    },
+                    "partes_envolvidas": ["lista de pessoas/empresas"],
+                    "valores": [{"descricao": "descrição", "valor": 0.00}],
+                    "prazos": [{"descricao": "descrição do prazo", "data": "data do prazo"}],
+                    "enderecos": ["lista de endereços"],
+                    "telefones": ["lista de telefones"],
+                    "emails": ["lista de emails"],
+                    "outras_informacoes_relevantes": "outras informações"
+                }
                 
                 Documento:
                 {texto}
                 
-                IMPORTANTE: Retorne APENAS o JSON, sem texto adicional.
+                IMPORTANTE: Retorne APENAS o JSON. NÃO inclua markdown, explicações ou texto adicional.
             """,
             
             'juridico': """
-                Você é um advogado especialista. Analise o seguinte documento sob a perspectiva jurídica.
+                Você é um advogado especialista em direito brasileiro. Analise o seguinte documento sob a perspectiva jurídica em português brasileiro.
                 
                 Forneça:
                 1. **Natureza Jurídica**: Tipo de documento e sua finalidade legal
-                2. **Análise de Cláusulas**: Pontos importantes e suas implicações
+                2. **Análise de Cláusulas**: Pontos importantes e suas implicações jurídicas
                 3. **Riscos Identificados**: Possíveis problemas ou riscos legais
-                4. **Recomendações**: Sugestões de ação ou pontos de atenção
-                5. **Base Legal**: Leis e normas aplicáveis (se identificadas)
+                4. **Jurisprudência Relacionada**: Súmulas, precedentes ou leis aplicáveis
+                5. **Prazos Processuais**: Prazos em curso, vencidos ou a vencer
+                6. **Urgência**: Nível de urgência da demanda (Baixa/Média/Alta/Crítica)
+                7. **Recomendações**: Sugestões de ação ou pontos de atenção
+                8. **Base Legal**: Leis e normas aplicáveis (se identificadas)
                 
                 Documento:
                 {texto}
             """,
             
             'contrato': """
-                Você é um advogado especialista em contratos. Analise o seguinte contrato detalhadamente.
+                Você é um advogado especialista em direito contratual brasileiro. Analise o seguinte contrato detalhadamente em português brasileiro.
                 
                 Forneça análise completa contendo:
-                1. **Tipo de Contrato**: Classificação e natureza
-                2. **Partes Contraentes**: Identificação das partes
+                1. **Tipo de Contrato**: Classificação e natureza jurídica
+                2. **Partes Contraentes**: Identificação das partes com CPF/CNPJ (se disponível)
                 3. **Objeto do Contrato**: O que está sendo contratado
                 4. **Obrigações das Partes**: Resumo das obrigações de cada parte
-                5. **Prazo e Vigência**: Duração e renovação
-                6. **Valores e Pagamento**: Condições financeiras
+                5. **Prazo e Vigência**: Duração, renovação automática, aviso prévio
+                6. **Valores e Pagamento**: Condições financeiras, multas, juros, correção monetária
                 7. **Cláusulas Importantes**: Destaque de cláusulas relevantes
-                8. **Penalidades**: Multas, juros, rescisão
-                9. **Pontos de Atenção**: Cláusulas que merecem atenção especial
-                10. **Recomendações**: Sugestões de alteração ou negociação
+                8. **Penalidades**: Multas, juros, rescisão contratual
+                9. **Cláusulas Abusivas**: Identificação de cláusulas que podem ser questionadas judicialmente
+                10. **Legislação Aplicável**: Leis que regem o contrato
+                11. **Pontos de Atenção**: Cláusulas que merecem atenção especial
+                12. **Recomendações**: Sugestões de alteração ou negociação
                 
                 Contrato:
                 {texto}
             """,
             
             'risco': """
-                Você é um advogado especialista em análise de risco. Analise o seguinte documento para identificar possíveis riscos jurídicos e financeiros.
+                Você é um advogado especialista em análise de risco no direito brasileiro. Analise o seguinte documento para identificar possíveis riscos jurídicos e financeiros em português brasileiro.
                 
                 Forneça:
-                1. **Riscos Jurídicos**: Potenciais problemas legais
+                1. **Riscos Jurídicos**: Potenciais problemas legais identificados
                 2. **Riscos Financeiros**: Possíveis impactos financeiros
-                3. **Riscos Contratuais**: Problemas nas cláusulas
-                4. **Nível de Risco**: Baixo, Médio ou Alto (justifique)
-                5. **Medidas Mitigadoras**: Ações para reduzir riscos
-                6. **Recomendação Final**: Proceder, renegociar ou rejeitar
+                3. **Riscos Contratuais**: Problemas nas cláusulas e obrigações
+                4. **Risco Processual**: Chance de êxito em uma ação judicial (se aplicável)
+                5. **Nível de Risco Geral**: Baixo, Médio ou Alto (justifique detalhadamente)
+                6. **Medidas Mitigadoras**: Ações recomendadas para reduzir riscos
+                7. **Custo Estimado**: Estimativa de custos com honorários e taxas (se aplicável)
+                8. **Prioridade**: Prioridade de ação (Imediata/Curtíssimo Prazo/Normal)
+                9. **Recomendação Final**: Proceder, renegociar, rejeitar ou consultar especialista
                 
                 Documento:
+                {texto}
+            """,
+            
+            'peticao': """
+                Você é um advogado especialista em direito processual brasileiro. Analise a seguinte petição judicial em português brasileiro.
+                
+                Forneça análise completa contendo:
+                1. **Tipo de Petição**: Inicial, Contestação, Réplica, Embargos, Recurso, Impugnação, etc.
+                2. **Partes Processuais**: Autor, Réu, Advogados envolvidos com números da OAB (se disponível)
+                3. **Número do Processo**: Número do processo judicial (se identificado)
+                4. **Pedidos**: O que está sendo solicitado ao juiz
+                5. **Fundamentos Jurídicos**: Leis, artigos, súmulas e jurisprudência citados
+                6. **Documentos Anexos**: Provas e documentos mencionados na petição
+                7. **Prazo para Resposta**: Prazo para manifestação da parte contrária
+                8. **Estratégia Processual**: Sugestão de estratégia de defesa ou ação
+                9. **Pontos Fortes**: Argumentos sólidos que favorecem a parte
+                10. **Pontos Frágeis**: Argumentos que podem ser contestados pela parte adversa
+                11. **Precedentes**: Jurisprudência favorável e desfavorável citada
+                12. **Recomendação**: Próximos passos recomendados
+                
+                Petição:
+                {texto}
+            """,
+            
+            'decisao': """
+                Você é um advogado especialista em direito processual brasileiro. Analise a seguinte decisão judicial em português brasileiro.
+                
+                Forneça análise completa contendo:
+                1. **Tipo de Decisão**: Sentença, Acórdão, Decisão Interlocutória, Despacho
+                2. **Juízo Prolator**: Vara, Comarca, Tribunal, Nome do Juiz/Relator
+                3. **Partes Processuais**: Autores, Réus, Terceiros envolvidos
+                4. **Número do Processo**: Número do processo (se identificado)
+                5. **Dispositivo**: O que foi decidido (procedente, improcedente, parcialmente procedente)
+                6. **Fundamentação**: Principais argumentos e fundamentos jurídicos utilizados pelo juiz
+                7. **Condenação**: Valores, multas, honorários advocatícios, custas processuais
+                8. **Prazos**: Prazos para cumprimento, pagamento ou manifestação
+                9. **Recurso Cabível**: Tipo de recurso adequado (Apelação, Agravo de Instrumento, Embargos de Declaração, Recurso Especial, Recurso Extraordinário)
+                10. **Prazo para Recurso**: Prazo recursal em dias úteis
+                11. **Probabilidade de Reforma**: Chance de reverter a decisão em instância superior (justifique)
+                12. **Efeitos**: Efeitos da decisão (suspensivo, devolutivo, ativo)
+                13. **Recomendação**: Interpor recurso, cumprir sentença, buscar acordo ou aguardar
+                
+                Decisão:
                 {texto}
             """
         }
@@ -838,7 +905,7 @@ class AIAnalysisService:
                 messages=[
                     {
                         "role": "system",
-                        "content": "Você é um assistente jurídico especializado em análise de documentos legais."
+                        "content": "Você é um assistente jurídico especializado em análise de documentos legais para escritórios de advocacia brasileiros. Responda SEMPRE em português brasileiro. Use linguagem técnica jurídica quando apropriado, mas explique termos complexos. Formate a resposta de forma clara e estruturada, usando markdown quando ajudar na legibilidade. Seja objetivo e prático, focando em informações acionáveis para o advogado."
                     },
                     {
                         "role": "user",
