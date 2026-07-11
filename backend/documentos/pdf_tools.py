@@ -272,6 +272,7 @@ def rotate_pdf_pages(pdf_bytes: bytes, rotation: int = 90, pages: List[int] = No
 def pdf_to_docx(pdf_bytes: bytes) -> bytes:
     """
     Converte um PDF para formato DOCX (Word).
+    Usa extração de texto + python-docx para criar o documento.
 
     Args:
         pdf_bytes: Bytes do PDF original
@@ -280,32 +281,68 @@ def pdf_to_docx(pdf_bytes: bytes) -> bytes:
         Bytes do arquivo DOCX
     """
     try:
-        from pdf2docx import Converter
-        import tempfile
+        from docx import Document
+        from docx.shared import Pt, Inches
+        import fitz
 
-        # Salva PDF temporário
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_pdf:
-            tmp_pdf.write(pdf_bytes)
-            pdf_path = tmp_pdf.name
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        word_doc = Document()
 
-        # Converte para docx
-        docx_path = pdf_path.replace('.pdf', '.docx')
-        cv = Converter(pdf_path)
-        cv.convert(docx_path, start=0, end=None)
-        cv.close()
+        # Configura fonte padrão
+        style = word_doc.styles['Normal']
+        font = style.font
+        font.name = 'Calibri'
+        font.size = Pt(11)
 
-        # Lê o resultado
-        with open(docx_path, 'rb') as f:
-            docx_bytes = f.read()
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            text = page.get_text().strip()
 
-        # Limpa arquivos temporários
-        os.unlink(pdf_path)
-        os.unlink(docx_path)
+            if text:
+                # Adiciona título da página
+                word_doc.add_heading(f'Página {page_num + 1}', level=2)
+                # Adiciona o texto
+                for paragraph in text.split('\n'):
+                    if paragraph.strip():
+                        word_doc.add_paragraph(paragraph.strip())
 
-        return docx_bytes
+            # Adiciona quebra de página entre páginas
+            if page_num < len(doc) - 1:
+                word_doc.add_page_break()
+
+        doc.close()
+
+        # Salva para bytes
+        output = io.BytesIO()
+        word_doc.save(output)
+        return output.getvalue()
 
     except ImportError:
-        raise Exception("pdf2docx não está instalado. Adicione ao requirements.txt e reinstale.")
+        # Fallback: tenta pdf2docx se disponível
+        try:
+            from pdf2docx import Converter
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_pdf:
+                tmp_pdf.write(pdf_bytes)
+                pdf_path = tmp_pdf.name
+
+            docx_path = pdf_path.replace('.pdf', '.docx')
+            cv = Converter(pdf_path)
+            cv.convert(docx_path, start=0, end=None)
+            cv.close()
+
+            with open(docx_path, 'rb') as f:
+                docx_bytes = f.read()
+
+            os.unlink(pdf_path)
+            os.unlink(docx_path)
+            return docx_bytes
+
+        except ImportError:
+            raise Exception("Nem python-docx nem pdf2docx estão instalados. Adicione um ao requirements.txt.")
+        except Exception as e2:
+            raise Exception(f"Erro ao converter PDF para Word: {str(e2)}")
     except Exception as e:
         raise Exception(f"Erro ao converter PDF para Word: {str(e)}")
 
