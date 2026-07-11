@@ -340,58 +340,32 @@ class OCRService:
     
     def extract_text_from_image_tesseract(self, arquivo_bytes: bytes) -> str:
         """
-        Extrai texto usando Tesseract otimizado (fallback)
+        Extrai texto usando Tesseract otimizado (execução única para velocidade)
         """
         try:
             image = Image.open(io.BytesIO(arquivo_bytes))
             
-            # Configurações otimizadas para Tesseract 5.5.0
-            configs = [
-                '--psm 3 -c tessedit_ocr_engine_mode=1',  # Auto + LSTM
-                '--psm 6 -c tessedit_ocr_engine_mode=1',  # Bloco uniforme + LSTM
-                '--psm 4 -c tessedit_ocr_engine_mode=2',  # Coluna única + LSTM+Legacy
-            ]
+            # Configuração única otimizada - executa apenas 1 vez para ser rápido
+            config = '--psm 3 -c tessedit_ocr_engine_mode=1'
             
-            melhor_resultado = ""
-            melhor_confianca = 0
+            resultado = pytesseract.image_to_string(
+                image,
+                lang='por',
+                config=config
+            )
             
-            for config in configs:
-                try:
-                    # Testa configuração e mede confiança
-                    data = pytesseract.image_to_data(
-                        image, 
-                        lang='por', 
-                        config=config, 
-                        output_type=pytesseract.Output.DICT
-                    )
-                    
-                    # Calcula confiança média
-                    confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
-                    if confidences:
-                        avg_confidence = sum(confidences) / len(confidences)
-                        
-                        if avg_confidence > melhor_confianca:
-                            melhor_confianca = avg_confidence
-                            melhor_resultado = pytesseract.image_to_string(
-                                image, 
-                                lang='por', 
-                                config=config
-                            )
-                except:
-                    continue
-            
-            if not melhor_resultado:
-                # Fallback para configuração simples
-                melhor_resultado = pytesseract.image_to_string(
-                    image, 
-                    lang='por', 
+            if not resultado or len(resultado.strip()) < 10:
+                # Fallback rápido com configuração alternativa
+                resultado = pytesseract.image_to_string(
+                    image,
+                    lang='por',
                     config='--psm 6'
                 )
             
             # APLICA RECONSTRUÇÃO INTELIGENTE
-            texto_final = smart_text_reconstruction(melhor_resultado)
+            texto_final = smart_text_reconstruction(resultado)
             
-            print(f"✅ Tesseract extraiu {len(texto_final)} caracteres (confiança: {melhor_confianca:.1f})")
+            print(f"✅ Tesseract extraiu {len(texto_final)} caracteres")
             return texto_final
             
         except Exception as e:
