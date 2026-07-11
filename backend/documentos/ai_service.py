@@ -214,7 +214,7 @@ def analyze_pdf_type_simple(arquivo_bytes: bytes) -> dict:
             confidence = 0.95
             reason = "Sem texto significativo detectado"
         elif has_images and not has_meaningful_text:
-            # Imagens sem texto = ESCANEADO  
+            # Imagens sem texto = ESCANEADO
             pdf_type = "escaneado"
             confidence = 0.9
             reason = "Imagens presentes sem texto significativo"
@@ -251,6 +251,54 @@ def analyze_pdf_type_simple(arquivo_bytes: bytes) -> dict:
             'reason': f"Erro na análise - forçando OCR: {str(e)}",
             'stats': {}
         }
+
+
+def is_page_scanned(page) -> bool:
+    """
+    Verifica se uma página específica do PDF é escaneada (imagem) ou digital (texto).
+    
+    Args:
+        page: Objeto de página do fitz (PyMuPDF)
+        
+    Returns:
+        True se a página parece ser escaneada, False se for digital
+    """
+    try:
+        # 1. Verifica se há texto significativo
+        text = page.get_text().strip()
+        if len(text) > 50:
+            # Tem texto suficiente - é digital
+            return False
+        
+        # 2. Verifica se há imagens
+        image_list = page.get_images()
+        if image_list:
+            # Tem imagens e pouco texto - provavelmente escaneada
+            return True
+        
+        # 3. Se não tem texto nem imagens, verifica tamanho da página
+        # Páginas escaneadas costumam ter dimensões diferentes (A4 em pixels)
+        rect = page.rect
+        page_area = rect.width * rect.height
+        
+        # Páginas com área muito grande (> 1 milhão de pontos) são provavelmente imagens
+        if page_area > 1000000 and len(text) < 20:
+            return True
+        
+        # 4. Verifica se o texto parece ser lixo (caracteres soltos de OCR mal interpretado)
+        if len(text) < 100:
+            # Conta proporção de caracteres especiais vs letras
+            special_chars = sum(1 for c in text if not c.isalnum() and not c.isspace())
+            if len(text) > 0 and special_chars / len(text) > 0.5:
+                return True
+        
+        # Padrão: se tem texto razoável, é digital
+        return False
+        
+    except Exception as e:
+        print(f"⚠️ Erro ao analisar página: {e}")
+        # Em caso de erro, assume escaneado (força OCR por segurança)
+        return True
 
 
 def extract_text_direct_method(arquivo_bytes: bytes, task_id: str) -> str:
@@ -383,47 +431,90 @@ class OCRService:
     @staticmethod
     def extract_text_from_pdf(arquivo_bytes: bytes, task_id: str = None) -> str:
         """
-        Método SUPER SIMPLIFICADO que força OCR na menor dúvida
+        Extração HÍBRIDA página por página.
+        Para cada página, decide se usa pypdf (digital) ou Tesseract (escaneado).
+        Ideal para PDFs do ESAJ que misturam páginas digitais e escaneadas.
         """
         if not task_id:
             task_id = str(uuid.uuid4())
 
-        # Análise simplificada e agressiva
-        pdf_analysis = analyze_pdf_type_simple(arquivo_bytes)
-        pdf_type = pdf_analysis['type']
-        confidence = pdf_analysis['confidence']
-        
-        print(f"🎯 PDF detectado como: {pdf_type.upper()} (confiança: {confidence:.2f})")
-        print(f"📋 Razão: {pdf_analysis['reason']}")
-        
-        progress_tracker.update_progress(
-            task_id, 0, 
-            f"PDF {pdf_type}: {pdf_analysis['reason']}"
-        )
-        
         try:
-            # LÓGICA ULTRA SIMPLES: se não for GERADO com alta confiança, usa OCR
-            if pdf_type == "gerado" and confidence >= 0.9:
-                print("🔄 PDF claramente gerado - usando extração direta")
-                return extract_text_direct_method(arquivo_bytes, task_id)
+            import fitz
+            doc = fitz.open(stream=arquivo_bytes, filetype="pdf")
+            total_pages = len(doc)
+            
+            print(f"📄 PDF tem {total_pages} páginas - iniciando extração híbrida")
+            progress_tracker.set_total_pages(task_id, total_pages)
+            
+            from pypdf import PdfReader
+            pdf_reader = PdfReader(io.BytesIO(arquivo_bytes))
+            
+            texto_completo = []
+            paginas_digitais = 0
+            paginas_escaneadas = 0
+            ocr_service = None
+            
+            for i in range(total_pages):
+                pagina_atual = i + 1
+                page_fitz = doc.load_page(i)
+                
+                # Decide se a página é digital ou escaneada
+                if is_page_scanned(page_fitz):
+                    # PÁGINA ESCANEADA → usa OCR Tesseract
+                    paginas_escaneadas += 1
+                    progress_tracker.update_progress(
+                        task_id, pagina_atual,
+                        f"OCR página {pagina_atual}/{total_pages} (escaneada)"
+                    )
+                    print(f"🔍 Página {pagina_atual}: ESCANEADA - usando OCR")
+                    
+                    # Converte página para imagem
+                    pix = page_fitz.get_pixmap(dpi=300)
+                    img_bytes = pix.tobytes("png")
+                    
+                    # Inicializa OCR service sob demanda
+                    if ocr_service is None:
+                        ocr_service = OCRService()
+                    
+                    texto = ocr_service.extract_text_from_image_tesseract(img_bytes)
+                    if texto.strip():
+                        texto_completo.append(f"--- Página {pagina_atual} ---\n{texto}")
+                else:
+                    # PÁGINA DIGITAL → usa pypdf (instantâneo)
+                    paginas_digitais += 1
+                    progress_tracker.update_progress(
+                        task_id, pagina_atual,
+                        f"Extraindo página {pagina_atual}/{total_pages} (digital)"
+                    )
+                    print(f"⚡ Página {pagina_atual}: DIGITAL - extração direta")
+                    
+                    page_pypdf = pdf_reader.pages[i]
+                    texto = page_pypdf.extract_text()
+                    if texto and texto.strip():
+                        texto_completo.append(f"--- Página {pagina_atual} ---\n{texto}")
+            
+            doc.close()
+            
+            texto_bruto = "\n\n".join(texto_completo)
+            
+            # Aplica reconstrução inteligente se houver páginas escaneadas
+            if paginas_escaneadas > 0:
+                texto_final = smart_text_reconstruction(texto_bruto)
             else:
-                # QUALQUER DÚVIDA = OCR
-                print("🔄 PDF duvidoso ou escaneado - FORÇANDO OCR")
-                progress_tracker.update_progress(task_id, 0, "Forçando OCR por segurança...")
-                
-                if platform.system() == 'Windows' and not POPPLER_PATH:
-                    msg = "Poppler não configurado para OCR em PDF de imagem."
-                    progress_tracker.complete_progress(task_id, False, msg)
-                    raise Exception(msg)
-                
-                # Vai direto para OCR com Tesseract (já instalado no Docker)
-                print("🚀 Usando Tesseract para OCR...")
-                return extract_text_tesseract_fallback(arquivo_bytes, task_id)
-                
+                texto_final = texto_bruto
+            
+            print(f"✅ Extração híbrida concluída: {len(texto_final)} caracteres")
+            print(f"   📊 {paginas_digitais} páginas digitais (rápido) + {paginas_escaneadas} páginas escaneadas (OCR)")
+            
+            progress_tracker.complete_progress(task_id, True)
+            return texto_final
+            
         except Exception as e:
-            error_message = f"Erro ao extrair texto do PDF: {str(e)}"
+            error_message = f"Erro na extração híbrida: {str(e)}"
             progress_tracker.complete_progress(task_id, False, error_message)
             print(f"❌ {error_message}")
+            import traceback
+            print(traceback.format_exc())
             raise Exception(error_message)
 
     @staticmethod
